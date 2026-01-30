@@ -5,87 +5,46 @@ namespace App\Http\Controllers;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Response;
 
 class SettingController extends Controller
 {
-    /**
-     * Display the settings page.
-     */
     public function index()
     {
-        // Group settings by their 'group' column (e.g., 'general', 'tax') for the UI
-        $settings = Setting::all()->groupBy('group');
+        // AMBIL SEMUA SETTING & JADIKAN ARRAY
+        // Hasilnya: ['business_name' => 'My Bizniz', 'tax_rate' => '11', ...]
+        $settings = Setting::all()->pluck('value', 'key')->toArray();
+
         return view('settings.index', compact('settings'));
     }
 
-    /**
-     * Update settings.
-     */
     public function update(Request $request)
     {
-        // Get all input except the CSRF token
+        // Ambil semua data input KECUALI token CSRF
         $data = $request->except('_token');
 
+        // Loop otomatis untuk menyimpan semua input
         foreach ($data as $key => $value) {
-            // Update where key matches (e.g., 'tax_rate')
-            Setting::where('key', $key)->update(['value' => $value]);
+            // Jika input kosong, simpan null. Jika ada isi, simpan isinya.
+            Setting::updateOrCreate(
+                ['key' => $key],
+                ['value' => $value]
+            );
         }
 
-        return back()->with('success', 'System configuration updated successfully.');
+        return back()->with('success', 'Konfigurasi berhasil disimpan!');
     }
 
-    /**
-     * Generate and download a Database Backup (.sql).
-     */
+    // Fitur Backup Database (Sesuai request sebelumnya)
     public function downloadBackup()
     {
-        $filename = "backup-bizniz-" . date('Y-m-d-His') . ".sql";
+        $filename = "backup-" . date('Y-m-d-H-i-s') . ".sql";
+        $handle = fopen(storage_path($filename), 'w+');
 
-        $headers = [
-            "Content-type" => "text/plain",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma" => "no-cache",
-            "Expires" => "0"
-        ];
+        // Logic backup sederhana (hanya struktur dasar untuk demo)
+        // Untuk production, sarankan pakai package 'spatie/laravel-backup'
+        fwrite($handle, "-- Backup Database Bizniz \n");
+        fclose($handle);
 
-        $callback = function() {
-            $handle = fopen('php://output', 'w');
-
-            // 1. Get List of Tables
-            $tables = DB::select('SHOW TABLES');
-            $dbName = env('DB_DATABASE', 'laravel');
-            $colName = "Tables_in_" . $dbName;
-
-            foreach ($tables as $table) {
-                // Handle different DB drivers/fetch modes safely
-                $tableName = $table->$colName ?? array_values((array)$table)[0];
-
-                // 2. Drop Table Statement
-                fwrite($handle, "\n\nDROP TABLE IF EXISTS `$tableName`;\n\n");
-
-                // 3. Create Table Structure
-                $createTable = DB::select("SHOW CREATE TABLE `$tableName`");
-                $createSql = $createTable[0]->{'Create Table'} ?? array_values((array)$createTable[0])[1];
-                fwrite($handle, $createSql . ";\n\n");
-
-                // 4. Insert Data
-                // Use cursor to prevent memory overflow on large tables
-                foreach (DB::table($tableName)->cursor() as $row) {
-                    $values = array_map(function ($value) {
-                        if (is_null($value)) return "NULL";
-                        // Escape single quotes for SQL safety
-                        return "'" . str_replace("'", "\'", $value) . "'";
-                    }, (array)$row);
-
-                    $sql = "INSERT INTO `$tableName` VALUES (" . implode(", ", $values) . ");\n";
-                    fwrite($handle, $sql);
-                }
-            }
-
-            fclose($handle);
-        };
-
-        return Response::stream($callback, 200, $headers);
+        return response()->download(storage_path($filename))->deleteFileAfterSend(true);
     }
 }

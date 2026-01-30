@@ -101,11 +101,14 @@ class PosController extends Controller
     // 4. CETAK STRUK
     public function receipt($invoice_code)
     {
-        // Ambil data transaksi beserta item, kasir, dan pelanggan
-        $transaction = Transaction::with(['items', 'user', 'customer'])
-            ->where('invoice_code', $invoice_code)
+        // 1. Ambil Data Transaksi
+        $transaction = Transaction::where('invoice_code', $invoice_code)
+            ->with(['items.product', 'user', 'customer'])
             ->firstOrFail();
 
-        return view('pos.receipt', compact('transaction'));
+        // 2. AMBIL PENGATURAN DARI DATABASE (Supaya Header/Footer berubah)
+        $settings = \App\Models\Setting::pluck('value', 'key')->toArray();
+
+        return view('pos.receipt', compact('transaction', 'settings'));
     }
 }

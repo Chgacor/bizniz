@@ -75,16 +75,11 @@ Route::middleware('auth')->group(function () {
     // Akses: Manajemen User, Simulasi Harga, Pengaturan Sistem, Backup
     // =========================================================================
     Route::group(['middleware' => ['role:Owner|Admin']], function () {
-
-        // Manajemen Staff
         Route::resource('users', UserController::class);
 
-        // Pricing Intelligence
-        Route::post('/finance/simulate', [FinanceController::class, 'simulatePrice']);
-
-        // System Configuration
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
+
         Route::get('/settings/backup', [SettingController::class, 'downloadBackup'])->name('settings.backup');
     });
 

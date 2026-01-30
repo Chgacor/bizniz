@@ -9,6 +9,7 @@ class Setting extends Model
 {
     use HasFactory;
 
+    protected $guarded = [];
     protected $fillable = ['key', 'value', 'group'];
 
     // Kita tidak butuh timestamps (created_at/updated_at) untuk setting sederhana

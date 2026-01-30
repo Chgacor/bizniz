@@ -36,14 +36,19 @@
                     </x-nav-link>
                     @endrole
 
-                    @role('Owner|Admin')
+                    @role('Owner')
                     <x-nav-link :href="route('users.index')" :active="request()->routeIs('users.*')">
                         {{ __('Staf') }}
                     </x-nav-link>
+                    @endrole
+
+                    @role('Owner|Admin')
                     <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')">
                         {{ __('Pengaturan') }}
                     </x-nav-link>
                     @endrole
+
+
                 </div>
             </div>
 

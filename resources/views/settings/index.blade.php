@@ -1,66 +1,133 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-brand-900 leading-tight">
-            {{ __('System Configuration') }}
+            {{ __('Konfigurasi Sistem') }}
         </h2>
     </x-slot>
 
-    <div class="py-12 bg-brand-50 min-h-screen">
-        <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 space-y-6">
+    <div class="py-12 bg-gray-100 min-h-screen">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
 
-            <form action="{{ route('settings.update') }}" method="POST">
-                @csrf
-                <div class="bg-white shadow overflow-hidden sm:rounded-lg border border-brand-200">
+            <div x-data="{ activeTab: 'general' }" class="flex flex-col md:flex-row gap-6">
 
-                    @foreach($settings as $group => $items)
-                        <div class="px-4 py-5 sm:px-6 bg-brand-100 border-b border-brand-200">
-                            <h3 class="text-lg leading-6 font-bold text-brand-900 uppercase tracking-wide">
-                                {{ $group }} Settings
-                            </h3>
+                <div class="w-full md:w-1/4">
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-xl sticky top-6">
+                        <div class="p-4 bg-brand-900 text-white font-bold text-sm rounded-t-xl">
+                            MENU PENGATURAN
                         </div>
-
-                        <div class="border-t border-gray-200 px-4 py-5 sm:p-0">
-                            <dl class="sm:divide-y sm:divide-gray-200">
-                                @foreach($items as $setting)
-                                    <div class="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 hover:bg-gray-50 transition">
-                                        <dt class="text-sm font-medium text-gray-500 capitalize flex items-center">
-                                            {{ str_replace('_', ' ', $setting->key) }}
-                                        </dt>
-                                        <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                            <input type="text"
-                                                   name="{{ $setting->key }}"
-                                                   value="{{ $setting->value }}"
-                                                   class="max-w-lg block w-full shadow-sm focus:ring-brand-500 focus:border-brand-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md">
-                                        </dd>
-                                    </div>
-                                @endforeach
-                            </dl>
-                        </div>
-                    @endforeach
-
-                    <div class="px-4 py-3 bg-gray-50 text-right sm:px-6 border-t border-gray-200">
-                        <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-900 hover:bg-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition">
-                            Save Configuration
-                        </button>
+                        <nav class="flex flex-col p-2 space-y-1">
+                            <button @click="activeTab = 'general'"
+                                    :class="activeTab === 'general' ? 'bg-brand-50 text-brand-700 font-bold border-l-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+                                    class="text-left px-4 py-3 text-sm rounded-md transition flex items-center">
+                                <span class="mr-3">🏢</span> Umum & Bisnis
+                            </button>
+                            <button @click="activeTab = 'finance'"
+                                    :class="activeTab === 'finance' ? 'bg-brand-50 text-brand-700 font-bold border-l-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+                                    class="text-left px-4 py-3 text-sm rounded-md transition flex items-center">
+                                <span class="mr-3">💰</span> Keuangan & Pajak
+                            </button>
+                            <button @click="activeTab = 'pos'"
+                                    :class="activeTab === 'pos' ? 'bg-brand-50 text-brand-700 font-bold border-l-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+                                    class="text-left px-4 py-3 text-sm rounded-md transition flex items-center">
+                                <span class="mr-3">🖨️</span> Struk & POS
+                            </button>
+                            <button @click="activeTab = 'backup'"
+                                    :class="activeTab === 'backup' ? 'bg-brand-50 text-brand-700 font-bold border-l-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'"
+                                    class="text-left px-4 py-3 text-sm rounded-md transition flex items-center">
+                                <span class="mr-3">💾</span> Database Backup
+                            </button>
+                        </nav>
                     </div>
                 </div>
-            </form>
 
-            <div class="bg-white shadow sm:rounded-lg border-l-4 border-brand-900">
-                <div class="px-4 py-5 sm:p-6">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900">Database Backup</h3>
-                    <div class="mt-2 max-w-xl text-sm text-gray-500">
-                        <p>Download a complete SQL copy of your business data (Customers, Inventory, Transactions). Save this file to an external drive or cloud storage weekly to prevent data loss.</p>
+                <div class="w-full md:w-3/4">
+                    <form action="{{ route('settings.update') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+
+                        <div x-show="activeTab === 'general'" x-transition.opacity class="bg-white shadow-sm sm:rounded-xl p-6">
+                            <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Informasi Bisnis</h3>
+                            <div class="grid grid-cols-1 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Nama Bisnis</label>
+                                    <input type="text" name="business_name" value="{{ $settings['business_name'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Alamat Toko</label>
+                                    <textarea name="address" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-500 focus:ring-brand-500">{{ $settings['address'] ?? '' }}</textarea>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">No. Telepon</label>
+                                        <input type="text" name="phone" value="{{ $settings['phone'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Email Toko</label>
+                                        <input type="email" name="email" value="{{ $settings['email'] ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="activeTab === 'finance'" style="display: none;" x-transition.opacity class="bg-white shadow-sm sm:rounded-xl p-6">
+                            <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Keuangan & Mata Uang</h3>
+                            <div class="grid grid-cols-1 gap-6">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Simbol Mata Uang</label>
+                                        <input type="text" name="currency_symbol" value="{{ $settings['currency_symbol'] ?? 'Rp' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700">Pajak PPN (%)</label>
+                                        <input type="number" name="tax_rate" value="{{ $settings['tax_rate'] ?? '0' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                        <p class="text-xs text-gray-500 mt-1">Isi 0 jika tidak ada pajak.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="activeTab === 'pos'" style="display: none;" x-transition.opacity class="bg-white shadow-sm sm:rounded-xl p-6">
+                            <h3 class="text-lg font-bold text-gray-800 mb-4 border-b pb-2">Pengaturan Struk (Receipt)</h3>
+                            <div class="grid grid-cols-1 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Header Struk (Atas)</label>
+                                    <input type="text" name="receipt_header" value="{{ $settings['receipt_header'] ?? '' }}" placeholder="Contoh: Selamat Datang di Bizniz" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Footer Struk (Bawah)</label>
+                                    <textarea name="receipt_footer" rows="2" placeholder="Contoh: Barang yang dibeli tidak dapat dikembalikan" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">{{ $settings['receipt_footer'] ?? '' }}</textarea>
+                                </div>
+                                <div class="flex items-center mt-2">
+                                    <input type="checkbox" name="show_logo_on_receipt" value="1" class="rounded border-gray-300 text-brand-600 shadow-sm focus:border-brand-300 focus:ring focus:ring-brand-200 focus:ring-opacity-50">
+                                    <span class="ml-2 text-sm text-gray-600">Tampilkan Logo di Struk</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="activeTab !== 'backup'" class="mt-6 flex justify-end">
+                            <button type="submit" class="bg-brand-900 hover:bg-black text-white font-bold py-3 px-8 rounded-lg shadow-lg transition transform hover:-translate-y-1">
+                                Simpan Konfigurasi
+                            </button>
+                        </div>
+                    </form>
+
+                    <div x-show="activeTab === 'backup'" style="display: none;" x-transition.opacity class="bg-white shadow-sm sm:rounded-xl p-6 border border-brand-200">
+                        <div class="flex items-start">
+                            <div class="bg-brand-100 p-3 rounded-full mr-4">
+                                <svg class="w-8 h-8 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-bold text-gray-900">Backup Database</h3>
+                                <p class="text-sm text-gray-500 mt-1">Unduh salinan lengkap database SQL Anda. Simpan file ini di tempat aman.</p>
+
+                                <a href="{{ route('settings.backup') }}" class="inline-flex items-center mt-4 px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25 transition ease-in-out duration-150">
+                                    ⬇️ Download SQL Backup
+                                </a>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mt-5">
-                        <a href="{{ route('settings.backup') }}" class="inline-flex items-center justify-center px-4 py-2 border border-transparent font-medium rounded-md text-brand-900 bg-brand-100 hover:bg-brand-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 sm:text-sm transition">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            Download Backup (.sql)
-                        </a>
-                    </div>
+
                 </div>
             </div>
-
         </div>
     </div>
 </x-app-layout>

@@ -10,30 +10,40 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-    // 1. Tampilkan Daftar Staf
     public function index()
     {
-        // Ambil semua user beserta role-nya, kecuali diri sendiri (agar tidak sengaja terhapus)
-        $users = User::with('roles')->where('id', '!=', auth()->id())->get();
+        // Admin & Owner boleh lihat semua user
+        $users = User::with('roles')->latest()->paginate(10);
         return view('users.index', compact('users'));
     }
 
-    // 2. Tampilkan Form Tambah Staf
     public function create()
     {
-        $roles = Role::all();
+        // Ambil semua role KECUALI Owner (Admin tidak boleh bikin Owner baru)
+        // Jika yang login Owner, boleh lihat semua role.
+        if (auth()->user()->hasRole('Owner')) {
+            $roles = Role::all();
+        } else {
+            // Admin hanya boleh bikin Staff atau Admin lain
+            $roles = Role::where('name', '!=', 'Owner')->get();
+        }
+
         return view('users.create', compact('roles'));
     }
 
-    // 3. Simpan Staf Baru
     public function store(Request $request)
     {
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
-            'role' => ['required', 'exists:roles,name'],
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users',
+            'password' => 'required|min:6',
+            'role' => 'required|exists:roles,name' // Validasi Role
         ]);
+
+        // CEGAH ADMIN MEMBUAT OWNER (Security)
+        if ($request->role === 'Owner' && !auth()->user()->hasRole('Owner')) {
+            abort(403, 'Admin tidak boleh membuat akun Owner.');
+        }
 
         $user = User::create([
             'name' => $request->name,
@@ -41,10 +51,9 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
-        // Tetapkan Role (Jabatan)
         $user->assignRole($request->role);
 
-        return redirect()->route('users.index')->with('success', 'Staf baru berhasil ditambahkan.');
+        return redirect()->route('users.index')->with('success', 'Staf berhasil ditambahkan.');
     }
 
     // 4. Hapus Staf (Pecat)

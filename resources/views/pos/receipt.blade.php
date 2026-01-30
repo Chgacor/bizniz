@@ -3,69 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receipt {{ $transaction->invoice_code }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Struk #{{ $transaction->invoice_code }}</title>
     <style>
+        body {
+            font-family: 'Courier New', Courier, monospace; /* Font struk kasir */
+            font-size: 12px;
+            margin: 0;
+            padding: 10px;
+            width: 58mm; /* Lebar standar kertas thermal */
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        .line { border-bottom: 1px dashed #000; margin: 5px 0; }
+        .flex { display: flex; justify-content: space-between; }
+        .items-table { width: 100%; border-collapse: collapse; margin: 5px 0; }
+        .items-table th { text-align: left; border-bottom: 1px dashed #000; }
+        .items-table td { padding-top: 2px; }
+
         @media print {
-            body { width: 80mm; margin: 0; } /* Thermal Printer Standard */
-            .no-print { display: none; }
+            @page { margin: 0; }
+            body { margin: 0; padding: 5px; }
         }
     </style>
 </head>
-<body class="bg-gray-50 text-black font-mono text-sm p-4 mx-auto max-w-[80mm] leading-tight">
+<body onload="window.print()">
 
-<div class="text-center mb-4 border-b border-dashed border-black pb-2">
-    <h1 class="text-xl font-bold uppercase">Bizniz.IO</h1>
-    <p class="text-xs">Secure Internal Operations</p>
-    <p class="text-xs mt-1">{{ now()->format('d M Y H:i') }}</p>
+<div class="text-center">
+    <h2 style="margin:0;">{{ $settings['business_name'] ?? 'BIZNIZ.IO' }}</h2>
+    <p style="margin:2px 0;">{{ $settings['receipt_header'] ?? 'Secure Internal Operations' }}</p>
+    <p style="margin:2px 0;">{{ $settings['address'] ?? '' }}</p>
+    <p style="margin:2px 0;">{{ date('d M Y H:i', strtotime($transaction->created_at)) }}</p>
 </div>
 
-<div class="mb-2 text-xs">
-    <p>INV: {{ $transaction->invoice_code }}</p>
-    <p>CSH: {{ strtoupper($transaction->user->name) }}</p>
+<div class="line"></div>
+
+<div>
+    INV: {{ $transaction->invoice_code }}<br>
+    KSR: {{ $transaction->user->name ?? 'Admin' }}<br>
+    PLG: {{ $transaction->customer->name ?? 'Umum' }}
 </div>
 
-<table class="w-full mb-4 text-xs">
+<div class="line"></div>
+
+<table class="items-table">
     <thead>
-    <tr class="border-b border-black">
-        <th class="text-left py-1">Item</th>
-        <th class="text-right py-1">Qty</th>
-        <th class="text-right py-1">Ttl</th>
+    <tr>
+        <th style="width: 50%">Item</th>
+        <th style="width: 15%" class="text-right">Qty</th>
+        <th style="width: 35%" class="text-right">Total</th>
     </tr>
     </thead>
     <tbody>
     @foreach($transaction->items as $item)
         <tr>
-            <td class="py-1">{{ Str::limit($item->product->name, 15) }}</td>
+            <td>
+                {{ $item->product->name ?? $item->name }} <br>
+                <small style="color:grey">@ {{ number_format($item->price) }}</small>
+            </td>
             <td class="text-right">{{ $item->quantity }}</td>
-            <td class="text-right">{{ number_format($item->price_at_sale * $item->quantity, 0) }}</td>
+            <td class="text-right">{{ number_format($item->price * $item->quantity) }}</td>
         </tr>
     @endforeach
     </tbody>
 </table>
 
-<div class="border-t border-dashed border-black pt-2 mb-6">
-    <div class="flex justify-between font-bold text-lg">
-        <span>TOTAL</span>
-        <span>{{ number_format($transaction->total_amount, 0) }}</span>
-    </div>
-    <div class="flex justify-between text-xs mt-1">
-        <span>CASH</span>
-        <span>{{ number_format($transaction->cash_received, 0) }}</span>
-    </div>
-    <div class="flex justify-between text-xs">
-        <span>CHANGE</span>
-        <span>{{ number_format($transaction->change_returned, 0) }}</span>
-    </div>
+<div class="line"></div>
+
+<div class="flex bold" style="font-size: 14px;">
+    <span>TOTAL</span>
+    <span>{{ number_format($transaction->total_amount) }}</span>
 </div>
 
-<div class="text-center text-xs mt-4">
-    <p>*** THANK YOU ***</p>
-    <p>Internal Use Only</p>
+<div class="flex" style="margin-top: 5px;">
+    <span>TUNAI (CASH)</span>
+    <span>{{ number_format($transaction->cash_received) }}</span>
 </div>
 
-<script>
-    window.onload = function() { window.print(); }
-</script>
+<div class="flex bold">
+    <span>KEMBALI (CHANGE)</span>
+    <span>{{ number_format($transaction->cash_received - $transaction->total_amount) }}</span>
+</div>
+
+<div class="line"></div>
+
+<div class="text-center" style="margin-top: 10px;">
+    <p>{{ $settings['receipt_footer'] ?? 'Terima Kasih telah berbelanja!' }}</p>
+    <p style="font-size: 10px;">Powered by Bizniz.io</p>
+</div>
+
 </body>
 </html>
