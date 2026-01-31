@@ -31,73 +31,95 @@
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
                     @forelse($customers as $c)
-                        {{-- LOGIKA HITUNG (Start) --}}
+
+                        {{-- =========================================== --}}
+                        {{-- LOGIKA HITUNG (DIPERBAIKI) --}}
+                        {{-- =========================================== --}}
                         @php
                             $totalPart = 0;
                             $totalJasa = 0;
-                            $visitCount = $c->transactions->count();
+                            $visitCount = 0;
 
-                            foreach($c->transactions as $trx) {
-                                // Pastikan item ada
-                                if($trx->items) {
-                                    foreach($trx->items as $item) {
-                                        $subtotal = $item->quantity * $item->price;
+                            if($c->transactions) {
+                                $visitCount = $c->transactions->count();
 
-                                        // CEK TIPE:
-                                        // 1. Jika product_id NULL (Input Manual) -> Jasa
-                                        // 2. Jika punya Product DAN tipe 'service' -> Jasa
-                                        $isService = ($item->product_id === null) ||
-                                                     ($item->product && $item->product->type === 'service');
+                                foreach($c->transactions as $trx) {
+                                    if($trx->items) {
+                                        foreach($trx->items as $item) {
+                                            // FIX: Prioritaskan 'price_at_sale' (snapshot harga saat beli)
+                                            // Jika kosong, baru ambil 'price' master. Jika kosong juga, 0.
+                                            $hargaFix = $item->price_at_sale ?? $item->price ?? 0;
 
-                                        if($isService) {
-                                            $totalJasa += $subtotal;
-                                        } else {
-                                            $totalPart += $subtotal;
+                                            $subtotal = $item->quantity * $hargaFix;
+
+                                            // Logika Deteksi Jasa vs Part
+                                            $isService = ($item->product_id === null) ||
+                                                         ($item->product && $item->product->type === 'service');
+
+                                            if($isService) {
+                                                $totalJasa += $subtotal;
+                                            } else {
+                                                $totalPart += $subtotal;
+                                            }
                                         }
                                     }
                                 }
                             }
                         @endphp
-                        {{-- LOGIKA HITUNG (End) --}}
+                        {{-- =========================================== --}}
 
-                        <tr class="hover:bg-gray-50 transition">
-                            <td class="px-6 py-4">
-                                <div class="font-bold text-gray-900">{{ $c->name }}</div>
-                                <div class="text-xs text-gray-400">Member: {{ $c->created_at->format('M Y') }}</div>
+                        <tr class="hover:bg-gray-50 transition group">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="h-12 w-12 rounded-full bg-brand-50 flex items-center justify-center text-brand-600 font-bold text-lg mr-4 border border-brand-100">
+                                        {{ substr($c->name, 0, 1) }}
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold text-gray-900">{{ $c->name }}</div>
+                                        <div class="text-xs text-gray-400">Join: {{ $c->created_at->format('M Y') }}</div>
+                                    </div>
+                                </div>
                             </td>
-                            <td class="px-6 py-4">
+
+                            <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-700">{{ $c->phone }}</div>
-                                <div class="text-xs text-gray-500 truncate max-w-[150px]">{{ $c->address }}</div>
+                                <div class="text-xs text-gray-500 truncate w-32">{{ $c->address }}</div>
                             </td>
 
-                            <td class="px-6 py-4">
-                                <div class="flex space-x-2">
-                                    <div class="bg-blue-50 px-3 py-2 rounded border border-blue-100">
-                                        <div class="text-[10px] text-blue-500 font-bold uppercase">Jasa</div>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex space-x-4">
+
+                                    <div class="bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 min-w-[100px]">
+                                        <div class="text-[10px] text-blue-500 font-bold uppercase tracking-wider mb-0.5">Jasa / Service</div>
                                         <div class="text-sm font-bold text-blue-700">Rp {{ number_format($totalJasa, 0, ',', '.') }}</div>
                                     </div>
-                                    <div class="bg-orange-50 px-3 py-2 rounded border border-orange-100">
-                                        <div class="text-[10px] text-orange-500 font-bold uppercase">Part</div>
+
+                                    <div class="bg-orange-50 px-3 py-2 rounded-lg border border-orange-100 min-w-[100px]">
+                                        <div class="text-[10px] text-orange-500 font-bold uppercase tracking-wider mb-0.5">Sparepart</div>
                                         <div class="text-sm font-bold text-brand-700">Rp {{ number_format($totalPart, 0, ',', '.') }}</div>
                                     </div>
-                                    <div class="flex flex-col justify-center text-right pl-2">
-                                        <span class="text-xs text-gray-400">Visit</span>
+
+                                    <div class="flex flex-col justify-center text-right pl-2 border-l border-gray-100">
+                                        <span class="text-xs text-gray-400">Kunjungan</span>
                                         <span class="font-bold text-gray-700">{{ $visitCount }}x</span>
                                     </div>
                                 </div>
                             </td>
 
-                            <td class="px-6 py-4 text-right">
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <button @click="showModal = true; editMode = true; form = { id: {{ $c->id }}, name: '{{ $c->name }}', phone: '{{ $c->phone }}', email: '{{ $c->email }}', address: '{{ $c->address }}' }"
-                                        class="text-blue-600 font-bold text-sm mr-2">Edit</button>
+                                        class="text-gray-400 hover:text-brand-600 transition mx-2 font-bold">Edit</button>
+
                                 <form action="{{ route('customers.destroy', $c->id) }}" method="POST" class="inline-block" onsubmit="return confirm('Hapus?');">
                                     @csrf @method('DELETE')
-                                    <button class="text-red-600 font-bold text-sm">Hapus</button>
+                                    <button class="text-gray-400 hover:text-red-600 transition font-bold">Hapus</button>
                                 </form>
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="text-center py-4 text-gray-500">Belum ada data pelanggan.</td></tr>
+                        <tr>
+                            <td colspan="4" class="px-6 py-12 text-center text-gray-500">Belum ada data pelanggan.</td>
+                        </tr>
                     @endforelse
                     </tbody>
                 </table>

@@ -7,7 +7,7 @@ use App\Http\Controllers\PosController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\SettingController;
-use App\Http\Controllers\CustomerController; // Tambahkan ini agar rapi
+use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\UserController;
 
@@ -44,14 +44,17 @@ Route::middleware('auth')->group(function () {
 
         // 2. Point of Sale (POS)
         Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
-        Route::get('/pos/search', [PosController::class, 'search'])->name('pos.search');
-        Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout'); // <--- Ini yang penting (POST)
+        Route::get('/pos/search', [PosController::class, 'search'])->name('pos.search'); // Search Produk
+        Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
         Route::get('/transaction/{invoice_code}/receipt', [PosController::class, 'receipt'])->name('pos.receipt');
 
         // 3. Customers
-        Route::resource('customers', CustomerController::class);
-        Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search'); // Tambahan jika belum ada
+        // --- PERBAIKAN: Taruh route spesifik DI ATAS Resource ---
+        Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search'); // Search Pelanggan
         Route::post('/customers/quick-store', [CustomerController::class, 'storeFromPos'])->name('customers.quick_store');
+
+        // Resource ditaruh PALING BAWAH
+        Route::resource('customers', CustomerController::class);
     });
 
     // =========================================================================

@@ -9,18 +9,16 @@ class CustomerController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Customer::query();
+        $query = \App\Models\Customer::query();
 
-        // Fitur Pencarian
         if ($request->has('search')) {
             $q = $request->search;
             $query->where('name', 'LIKE', "%{$q}%")
                 ->orWhere('phone', 'LIKE', "%{$q}%");
         }
 
-        // --- INI KUNCI PERBAIKANNYA ---
-        // Kita wajib mengambil data berantai:
-        // Transactions -> Items -> Product
+        // LOAD RELASI LENGKAP: Transactions -> Items -> Product
+        // Ini kunci agar perhitungan 'Jasa' vs 'Part' bisa dilakukan
         $customers = $query->with(['transactions.items.product'])
             ->latest()
             ->paginate(10);
@@ -33,8 +31,19 @@ class CustomerController extends Controller
 
     public function search(Request $request)
     {
-        $q = $request->get('query');
-        return response()->json(Customer::where('name', 'LIKE', "%{$q}%")->orWhere('phone', 'LIKE', "%{$q}%")->limit(10)->get());
+        // Validasi input agar tidak error jika kosong
+        $query = $request->get('query');
+
+        if (!$query) {
+            return response()->json([]);
+        }
+
+        $customers = \App\Models\Customer::where('name', 'LIKE', "%{$query}%")
+            ->orWhere('phone', 'LIKE', "%{$query}%")
+            ->take(10) // Limit hasil
+            ->get(['id', 'name', 'phone', 'address']); // Hanya ambil kolom penting
+
+        return response()->json($customers);
     }
 
     public function storeFromPos(Request $request)

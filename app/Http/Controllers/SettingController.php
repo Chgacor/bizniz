@@ -37,14 +37,52 @@ class SettingController extends Controller
     // Fitur Backup Database (Sesuai request sebelumnya)
     public function downloadBackup()
     {
-        $filename = "backup-" . date('Y-m-d-H-i-s') . ".sql";
-        $handle = fopen(storage_path($filename), 'w+');
+        $dbName = env('DB_DATABASE');
+        $tables = \Illuminate\Support\Facades\DB::select('SHOW TABLES');
+        $return = "";
 
-        // Logic backup sederhana (hanya struktur dasar untuk demo)
-        // Untuk production, sarankan pakai package 'spatie/laravel-backup'
-        fwrite($handle, "-- Backup Database Bizniz \n");
-        fclose($handle);
+        // 1. Loop semua tabel di database
+        foreach ($tables as $table) {
+            $tableName = $table->{'Tables_in_' . $dbName};
 
-        return response()->download(storage_path($filename))->deleteFileAfterSend(true);
+            // Ambil struktur tabel (CREATE TABLE ...)
+            $createTable = \Illuminate\Support\Facades\DB::select("SHOW CREATE TABLE `$tableName`");
+            $return .= "\n\n" . $createTable[0]->{'Create Table'} . ";\n\n";
+
+            // Ambil isi data (INSERT INTO ...)
+            $rows = \Illuminate\Support\Facades\DB::table($tableName)->get();
+
+            foreach ($rows as $row) {
+                $return .= "INSERT INTO `$tableName` VALUES(";
+                $values = [];
+
+                foreach ($row as $key => $val) {
+                    if (is_null($val)) {
+                        $values[] = "NULL";
+                    } elseif (is_numeric($val)) {
+                        $values[] = $val;
+                    } else {
+                        $values[] = "'" . addslashes($val) . "'";
+                    }
+                }
+
+                $return .= implode(',', $values);
+                $return .= ");\n";
+            }
+        }
+
+        // 2. Simpan ke file
+        $fileName = 'backup-' . date('Y-m-d-H-i-s') . '.sql';
+        $path = storage_path("app/" . $fileName);
+
+        // Pastikan folder ada
+        if(!file_exists(storage_path("app"))) {
+            mkdir(storage_path("app"), 0777, true);
+        }
+
+        file_put_contents($path, $return);
+
+        // 3. Download dan Hapus file dari server setelah dikirim
+        return response()->download($path)->deleteFileAfterSend(true);
     }
 }
