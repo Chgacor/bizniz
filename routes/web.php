@@ -50,10 +50,10 @@ Route::middleware('auth')->group(function () {
 
         // 3. Customers
         // --- PERBAIKAN: Taruh route spesifik DI ATAS Resource ---
-        Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search'); // Search Pelanggan
+        Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search');
         Route::post('/customers/quick-store', [CustomerController::class, 'storeFromPos'])->name('customers.quick_store');
 
-        // Resource ditaruh PALING BAWAH
+        // Resource goes LAST because it contains a wildcard path ({id})
         Route::resource('customers', CustomerController::class);
     });
 

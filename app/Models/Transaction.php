@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Transaction extends Model
 {
+
+    protected $guarded = [];
     protected $fillable = [
         'invoice_code',
         'user_id',

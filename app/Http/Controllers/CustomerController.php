@@ -31,17 +31,19 @@ class CustomerController extends Controller
 
     public function search(Request $request)
     {
-        // Validasi input agar tidak error jika kosong
-        $query = $request->get('query');
+        $query = trim($request->get('query')); // Trim whitespace
 
-        if (!$query) {
+        // Return empty array if search is too short (optional, but good for performance)
+        if (strlen($query) < 1) {
             return response()->json([]);
         }
 
-        $customers = \App\Models\Customer::where('name', 'LIKE', "%{$query}%")
+        $customers = \App\Models\Customer::query()
+            ->where('name', 'LIKE', "%{$query}%") // Case-insensitive in MySQL by default
             ->orWhere('phone', 'LIKE', "%{$query}%")
-            ->take(10) // Limit hasil
-            ->get(['id', 'name', 'phone', 'address']); // Hanya ambil kolom penting
+            ->latest()
+            ->take(10) // Limit results to prevent UI lag
+            ->get(['id', 'name', 'phone']);// Optimize: select only needed cols
 
         return response()->json($customers);
     }

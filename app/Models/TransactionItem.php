@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TransactionItem extends Model
 {
+    protected $guarded = [];
     protected $fillable = [
         'transaction_id',
         'product_id',
