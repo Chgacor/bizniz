@@ -285,7 +285,7 @@
                 init() { this.fetchProducts(); },
                 fetchProducts() { fetch(`/pos/search?query=${this.searchQuery}`).then(r=>r.json()).then(d=>this.products=d); },
 
-                // ... (Bagian computed cartParts, cartServices, totals biarkan sama) ...
+                // Computed Properties
                 get filteredProducts() {
                     return this.products.filter(p => {
                         if (this.activeTab === 'goods') return p.type === 'goods' || !p.type;
@@ -300,14 +300,20 @@
                 cartTotalQty() { return this.cart.reduce((s,i)=>s+i.qty,0); },
                 formatRupiah(n) { return new Intl.NumberFormat('id-ID', {style:'currency', currency:'IDR', maximumFractionDigits:0}).format(n); },
 
-                // ... (Fungsi Add/Remove Cart biarkan sama) ...
+                // Cart Logic
                 addToCart(p) {
                     let item = this.cart.find(i => i.id === p.id && !i.is_custom);
-                    if(item) { if(p.type === 'goods' && item.qty >= p.stock_quantity) alert('Stok Habis!'); else item.qty++; }
+                    if(item) {
+                        if(p.type === 'goods' && item.qty >= p.stock_quantity) {
+                            Swal.fire({ icon: 'error', title: 'Stok Habis!', text: 'Stok produk ini sudah maksimal di keranjang.', confirmButtonColor: '#fb923c' });
+                        } else item.qty++;
+                    }
                     else { let max = p.type === 'goods' ? p.stock_quantity : 9999; this.cart.push({...p, price: p.sell_price, qty: 1, max: max, is_custom: false}); }
                 },
                 addCustomService() {
-                    if(!this.customService.name || !this.customService.price) return alert('Lengkapi data!');
+                    if(!this.customService.name || !this.customService.price) {
+                        return Swal.fire({ icon: 'warning', title: 'Data Belum Lengkap', text: 'Mohon isi nama jasa dan biaya.', confirmButtonColor: '#fb923c' });
+                    }
                     this.cart.push({ id: 'custom_'+Date.now(), name: this.customService.name, price: parseInt(this.customService.price), qty: 1, max: 9999, type: 'service', is_custom: true });
                     this.showCustomServiceModal = false; this.customService = {name:'', price:''};
                 },
@@ -325,27 +331,37 @@
                     }
                 },
 
-                // ... (Fungsi Customer biarkan sama) ...
+                // Customer Logic
                 openCustomerModal() { this.showCustModal = true; this.addCustMode = false; this.custQuery = ''; this.custResults = []; },
                 closeCustomerModal() { this.showCustModal = false; },
                 searchCustomers() { if (this.custQuery.length > 1) fetch(`/customers/search?query=${this.custQuery}`).then(r => r.json()).then(d => this.custResults = d); },
                 selectCustomer(c) { this.customer = c; this.closeCustomerModal(); },
                 saveNewCustomer() {
-                    if(!this.newCust.name || !this.newCust.phone) return alert('Nama dan No HP Wajib!');
+                    if(!this.newCust.name || !this.newCust.phone) return Swal.fire({ icon: 'warning', title: 'Data Kurang', text: 'Nama dan No HP Wajib diisi!', confirmButtonColor: '#fb923c' });
                     fetch('/customers/quick-store', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.head.querySelector('meta[name=csrf-token]').content },
                         body: JSON.stringify(this.newCust)
                     }).then(r => r.json()).then(d => {
                         if(d.status === 'success') { this.selectCustomer(d.customer); this.newCust = { name: '', phone: '', address: '' }; }
-                        else alert('Gagal menyimpan.');
+                        else Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal menyimpan pelanggan.', confirmButtonColor: '#ef4444' });
                     });
                 },
 
-                // ============================================================
-                // INI FUNGSI BARU YANG MENGGUNAKAN LOGIKA ANDA (ASYNC/AWAIT)
-                // ============================================================
+                // ===============================================
+                // CHECKOUT PROCESS (DENGAN SWEETALERT 2)
+                // ===============================================
                 async processCheckout() {
-                    if(Number(this.cashReceived) < this.cartTotal) return alert('Uang Kurang!');
+                    // 1. Cek Uang Kurang
+                    if(Number(this.cashReceived) < this.cartTotal) {
+                        return Swal.fire({
+                            icon: 'warning',
+                            title: 'Uang Kurang!',
+                            text: 'Nominal pembayaran belum cukup. Harap cek kembali.',
+                            confirmButtonText: 'Oke, Siap',
+                            confirmButtonColor: '#fb923c', // Soft Orange
+                            iconColor: '#ea580c', // Orange Tua
+                        });
+                    }
 
                     this.isLoading = true;
 
@@ -354,7 +370,7 @@
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Accept': 'application/json', // Minta JSON eksplisit
+                                'Accept': 'application/json',
                                 'X-CSRF-TOKEN': document.head.querySelector('meta[name=csrf-token]').content
                             },
                             body: JSON.stringify({
@@ -364,33 +380,32 @@
                             })
                         });
 
-                        // 1. Cek jika Server Error (Bukan 200 OK)
-                        if (!response.ok) {
-                            // Baca error HTML/Text dari server
-                            const errorText = await response.text();
-                            console.error('SERVER ERROR RAW:', errorText); // Cek Console Browser!
+                        if (!response.ok) throw new Error(`Server Error (${response.status})`);
 
-                            // Tampilkan pesan error ke user (ambil sebagian teks biar tidak kepanjangan)
-                            // Biasanya error Laravel ada di title atau message
-                            throw new Error(`Server Error (${response.status}). Cek Console.`);
-                        }
-
-                        // 2. Jika Sukses, baru parse JSON
                         const data = await response.json();
 
                         if(data.status === 'success') {
+                            // Buka Nota
                             window.open(`/transaction/${data.invoice}/receipt`, '_blank', 'width=400,height=600');
+
+                            // Reset POS
                             this.cart = [];
                             this.cashReceived = '';
                             this.customer = null;
                             this.fetchProducts();
+
                         } else {
-                            alert('Gagal: ' + data.message);
+                            Swal.fire({ icon: 'error', title: 'Transaksi Gagal', text: data.message, confirmButtonColor: '#ef4444' });
                         }
 
                     } catch (err) {
-                        console.error('CATCH ERROR:', err);
-                        alert('TRANSAKSI GAGAL!\n\nKemungkinan penyebab:\n1. Model Database belum di-update (guarded=[])\n2. Kolom database kurang\n\nCek Console (F12) untuk detail error merah.');
+                        console.error(err);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Terjadi Kesalahan',
+                            text: 'Cek koneksi atau database. Lihat Console (F12) untuk detail.',
+                            confirmButtonColor: '#ef4444'
+                        });
                     } finally {
                         this.isLoading = false;
                     }

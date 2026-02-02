@@ -10,7 +10,8 @@ use App\Http\Controllers\SettingController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\UserController;
-
+use App\Models\TransactionItem;
+use App\Models\Product;
 
 /*
 |--------------------------------------------------------------------------
@@ -71,6 +72,31 @@ Route::middleware('auth')->group(function () {
         Route::post('/reports/export', [ReportController::class, 'export'])->name('reports.export');
         // Finance Tools
 
+    });
+
+    Route::get('/fix-prices', function() {
+        // 1. Cari item transaksi yang harganya 0 atau NULL
+        $items = TransactionItem::where('price_at_sale', '<=', 0)
+            ->orWhereNull('price_at_sale')
+            ->get();
+
+        $count = 0;
+        foreach($items as $item) {
+            // 2. Cari produk aslinya di gudang
+            $product = Product::find($item->product_id);
+
+            if($product) {
+                // 3. Update harga transaksi mengikuti harga jual produk saat ini
+                $item->update([
+                    'price_at_sale' => $product->sell_price,
+                    // Kita update juga kolom 'price' biar aman
+                    'price' => $product->sell_price
+                ]);
+                $count++;
+            }
+        }
+
+        return "SIAP PAK BOS! Berhasil memperbaiki $count data transaksi yang harganya Rp 0. Silakan cek menu Analitik sekarang.";
     });
 
     // =========================================================================

@@ -8,9 +8,29 @@ use Illuminate\Http\Request;
 
 class WarehouseController extends Controller
 {
-    public function index()
+    // =========================================================
+    // UPDATE UTAMA ADA DI FUNGSI INDEX INI
+    // =========================================================
+    public function index(Request $request)
     {
-        $products = Product::latest()->paginate(10);
+        // 1. Mulai Query Builder
+        $query = Product::query();
+
+        // 2. Cek apakah ada pencarian?
+        if ($request->filled('search')) {
+            $search = $request->search;
+
+            // Cari berdasarkan Nama ATAU Kode Produk
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('product_code', 'like', "%{$search}%");
+            });
+        }
+
+        // 3. Ambil data (terbaru) & Paginate
+        // withQueryString() penting agar saat pindah halaman (page 2), pencarian tidak hilang
+        $products = $query->latest()->paginate(10)->withQueryString();
+
         return view('warehouse.index', compact('products'));
     }
 
@@ -25,11 +45,13 @@ class WarehouseController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'product_code' => 'required|unique:products,product_code',
-            'category' => 'required|string', // Teks bebas
+            'category' => 'required|string',
             'buy_price' => 'required|numeric|min:0',
             'sell_price' => 'required|numeric|min:0',
             'stock_quantity' => 'required|integer|min:0',
             'image' => 'nullable|image|max:2048',
+            // Tambahkan validasi tipe jika belum ada di form, default bisa 'goods'
+            'type' => 'nullable|in:goods,service',
         ]);
 
         // Upload Gambar
@@ -37,6 +59,9 @@ class WarehouseController extends Controller
         if ($request->hasFile('image')) {
             $imagePath = $request->file('image')->store('products', 'public');
         }
+
+        // Tentukan tipe (jika tidak dikirim form, anggap goods)
+        $type = $request->type ?? 'goods';
 
         // Simpan
         $product = Product::create([
@@ -47,24 +72,25 @@ class WarehouseController extends Controller
             'sell_price' => $request->sell_price,
             'stock_quantity' => $request->stock_quantity,
             'image_path' => $imagePath,
+            'type' => $type, // Pastikan kolom ini ada di database/model
         ]);
 
-        // Catat Stok Awal
-        StockMovement::create([
-            'product_id' => $product->id,
-            'user_id' => auth()->id(),
-            'type' => 'in',
-            'quantity' => $request->stock_quantity,
-            'description' => 'Stok Awal (Barang Baru)',
-        ]);
+        // Catat Stok Awal (Hanya jika tipe barang fisik)
+        if($type === 'goods') {
+            StockMovement::create([
+                'product_id' => $product->id,
+                'user_id' => auth()->id(),
+                'type' => 'in',
+                'quantity' => $request->stock_quantity,
+                'description' => 'Stok Awal (Barang Baru)',
+            ]);
+        }
 
         return redirect()->route('warehouse.index')->with('success', 'Produk berhasil ditambahkan!');
     }
 
-    // (Fungsi edit, update, destroy biarkan tetap ada seperti sebelumnya)
     public function edit($id)
     {
-        // CEK IZIIN
         if(auth()->user()->hasRole('Staff')) {
             abort(403, 'Akses Ditolak: Staff tidak diperbolehkan mengedit barang.');
         }
@@ -72,6 +98,7 @@ class WarehouseController extends Controller
         $product = Product::findOrFail($id);
         return view('warehouse.edit', compact('product'));
     }
+
     public function update(Request $request, $id)
     {
         if(auth()->user()->hasRole('Staff')) {
@@ -89,28 +116,28 @@ class WarehouseController extends Controller
             'image' => 'nullable|image|max:2048',
         ]);
 
-        // Cek apakah stok berubah? Jika ya, catat log.
-        $oldStock = $product->stock_quantity;
-        $newStock = $request->stock_quantity;
+        // Cek Logika Stok (Hanya untuk Barang Fisik)
+        if ($product->type === 'goods' || $product->type === null) {
+            $oldStock = $product->stock_quantity;
+            $newStock = $request->stock_quantity;
 
-        if ($newStock != $oldStock) {
-            $diff = $newStock - $oldStock;
-            StockMovement::create([
-                'product_id' => $product->id,
-                'user_id' => auth()->id(),
-                'type' => $diff > 0 ? 'adjustment_in' : 'adjustment_out', // Masuk atau Keluar
-                'quantity' => abs($diff),
-                'description' => 'Koreksi Stok Manual (Edit Produk)',
-            ]);
+            if ($newStock != $oldStock) {
+                $diff = $newStock - $oldStock;
+                StockMovement::create([
+                    'product_id' => $product->id,
+                    'user_id' => auth()->id(),
+                    'type' => $diff > 0 ? 'adjustment_in' : 'adjustment_out',
+                    'quantity' => abs($diff),
+                    'description' => 'Koreksi Stok Manual (Edit Produk)',
+                ]);
+            }
         }
 
         // Handle Upload Foto Baru
         if ($request->hasFile('image')) {
-            // Hapus foto lama jika ada
             if ($product->image_path && \Illuminate\Support\Facades\Storage::exists('public/' . $product->image_path)) {
                 \Illuminate\Support\Facades\Storage::delete('public/' . $product->image_path);
             }
-            // Simpan foto baru
             $imagePath = $request->file('image')->store('products', 'public');
             $product->image_path = $imagePath;
         }
@@ -122,26 +149,29 @@ class WarehouseController extends Controller
             'buy_price' => $request->buy_price,
             'sell_price' => $request->sell_price,
             'stock_quantity' => $request->stock_quantity,
-            // image_path sudah dihandle di atas
         ]);
 
         return redirect()->route('warehouse.index')->with('success', 'Data produk berhasil diperbarui.');
     }
 
-    // 6. SHOW (Untuk jaga-jaga jika tombol View tertekan)
     public function show($id)
     {
-        // Langsung lempar ke halaman edit saja biar praktis
         return redirect()->route('warehouse.edit', $id);
     }
+
     public function destroy($id)
     {
-        // CEK IZIN
         if(auth()->user()->hasRole('Staff')) {
             abort(403, 'Akses Ditolak.');
         }
 
         $product = Product::findOrFail($id);
+
+        // Hapus gambar fisik jika ada
+        if ($product->image_path && \Illuminate\Support\Facades\Storage::exists('public/' . $product->image_path)) {
+            \Illuminate\Support\Facades\Storage::delete('public/' . $product->image_path);
+        }
+
         $product->delete();
         return redirect()->route('warehouse.index')->with('success', 'Produk dihapus.');
     }
