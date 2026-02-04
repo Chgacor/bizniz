@@ -5,15 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Transaction extends Model
+class SalesReturn extends Model
 {
     use HasFactory;
 
+    protected $table = 'returns';
     protected $guarded = ['id'];
 
-    public function items()
+    public function transaction()
     {
-        return $this->hasMany(TransactionItem::class);
+        return $this->belongsTo(Transaction::class);
     }
 
     public function user()
@@ -21,13 +22,8 @@ class Transaction extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function customer()
+    public function items()
     {
-        return $this->belongsTo(Customer::class);
-    }
-
-    public function promotion()
-    {
-        return $this->belongsTo(Promotion::class);
+        return $this->hasMany(ReturnItem::class, 'return_id');
     }
 }

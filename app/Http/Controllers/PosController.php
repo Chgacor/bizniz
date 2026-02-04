@@ -2,127 +2,149 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Product;
+use App\Models\Customer;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
+use App\Models\Promotion;
 use App\Models\StockMovement;
+// use App\Models\Setting; // Uncomment jika Model Setting sudah dibuat
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class PosController extends Controller
 {
-    // 1. TAMPILAN HALAMAN POS
     public function index()
     {
-        return view('pos.index');
-    }
-
-    // 2. SEARCH API (UNTUK JAVASCRIPT)
-    public function search(Request $request)
-    {
-        $query = $request->get('query');
-
-        $products = Product::query()
-            ->where('name', 'LIKE', "%{$query}%")
-            ->orWhere('product_code', 'LIKE', "%{$query}%")
-            ->where('stock_quantity', '>', 0) // Opsional: Sembunyikan stok 0 (kecuali jasa)
-            ->orWhere('type', 'service')      // Jasa selalu muncul
-            ->orderBy('name', 'asc')
-            ->limit(50)
+        $products = Product::where('stock_quantity', '>', 0)
+            ->orWhere('type', 'service')
+            ->orderBy('name')
             ->get();
 
-        return response()->json($products);
+        $customers = Customer::orderBy('name')->get();
+
+        // Ambil promo aktif
+        $promotions = Promotion::where('is_active', true)
+            ->where(function($q) {
+                $q->whereNull('start_date')->orWhere('start_date', '<=', now());
+            })
+            ->where(function($q) {
+                $q->whereNull('end_date')->orWhere('end_date', '>=', now());
+            })
+            ->get();
+
+        return view('pos.index', compact('products', 'customers', 'promotions'));
     }
 
-    // 3. PROSES CHECKOUT (INTI PERBAIKAN)
-    public function checkout(Request $request)
+    // METHOD STORE (LOGIKA DISKON & PROMO TETAP DIPERTAHANKAN)
+    public function store(Request $request)
     {
         $request->validate([
             'cart' => 'required|array|min:1',
-            'cash_received' => 'required|numeric|min:0',
-            'customer_id' => 'nullable|exists:customers,id'
+            'paid_amount' => 'required|numeric',
         ]);
 
-        // Gunakan DB Transaction agar jika satu gagal, semua batal (Aman untuk Stok)
+        DB::beginTransaction();
         try {
-            return DB::transaction(function () use ($request) {
+            $cart = $request->cart;
+            $subtotal = 0;
 
-                // 1. Hitung Total Secara Backend (Jangan percaya total dari frontend)
-                $totalAmount = 0;
-                foreach ($request->cart as $item) {
-                    // Pastikan harga ada, jika tidak default 0
-                    $price = isset($item['price']) ? $item['price'] : 0;
-                    $qty = isset($item['qty']) ? $item['qty'] : 1;
-                    $totalAmount += $price * $qty;
+            // 1. Hitung Subtotal & Validasi Stok
+            foreach ($cart as $item) {
+                $product = Product::find($item['id']);
+                if ($product->type === 'goods' && $product->stock_quantity < $item['qty']) {
+                    throw new \Exception("Stok {$product->name} kurang! Sisa: {$product->stock_quantity}");
                 }
+                $subtotal += $product->sell_price * $item['qty'];
+            }
 
-                // 2. Buat Header Transaksi
-                $transaction = Transaction::create([
-                    'invoice_code'  => 'INV-' . date('Ymd') . '-' . strtoupper(uniqid()),
-                    'user_id'       => auth()->id(),
-                    'customer_id'   => $request->customer_id,
-                    'total_amount'  => $totalAmount,
-                    'cash_received' => $request->cash_received,
-                    'change_amount' => $request->cash_received - $totalAmount,
-                    'status'        => 'completed'
+            // 2. Hitung Diskon (Manual / Promo)
+            $discountAmount = 0;
+            $promotionId = null;
+
+            if ($request->manual_discount > 0) {
+                $discountAmount = min($request->manual_discount, $subtotal);
+            } elseif ($request->promotion_id) {
+                $promo = Promotion::find($request->promotion_id);
+                if ($promo && $promo->isValid()) {
+                    $promotionId = $promo->id;
+                    $discountAmount = ($promo->discount_type === 'fixed')
+                        ? $promo->value
+                        : $subtotal * ($promo->value / 100);
+                }
+            }
+
+            $grandTotal = $subtotal - $discountAmount;
+
+            if ($request->paid_amount < $grandTotal) {
+                throw new \Exception("Pembayaran kurang!");
+            }
+
+            // 3. Simpan Transaksi
+            $transaction = Transaction::create([
+                'invoice_code' => 'INV-' . date('Ymd') . '-' . Str::upper(Str::random(4)),
+                'user_id' => auth()->id(),
+                'customer_id' => $request->customer_id,
+                'promotion_id' => $promotionId,
+                'subtotal' => $subtotal,
+                'discount_amount' => $discountAmount,
+                'tax_amount' => 0,
+                'total_amount' => $grandTotal,
+                'paid_amount' => $request->paid_amount, // DB kita pakai paid_amount
+                'change_amount' => $request->paid_amount - $grandTotal,
+                'payment_method' => 'cash',
+            ]);
+
+            // 4. Simpan Detail & Kurangi Stok
+            foreach ($cart as $item) {
+                $product = Product::find($item['id']);
+                TransactionItem::create([
+                    'transaction_id' => $transaction->id,
+                    'product_id' => $product->id,
+                    'quantity' => $item['qty'],
+                    'price_at_sale' => $product->sell_price,
+                    'subtotal' => $product->sell_price * $item['qty'],
                 ]);
 
-                // 3. Proses Setiap Item
-                foreach ($request->cart as $cartItem) {
-                    $isCustom = isset($cartItem['is_custom']) && $cartItem['is_custom'];
-                    $productId = $isCustom ? null : $cartItem['id'];
-                    $price = $cartItem['price'];
-                    $qty = $cartItem['qty'];
-
-                    // Simpan Detail Item
-                    // PENTING: Kita isi 'price' DAN 'price_at_sale' untuk kompatibilitas database
-                    TransactionItem::create([
-                        'transaction_id' => $transaction->id,
-                        'product_id'     => $productId,
-                        'name'           => $cartItem['name'],
-                        'quantity'       => $qty,
-                        'price'          => $price,       // Kolom standar
-                        'price_at_sale'  => $price        // Kolom snapshot harga (Wajib ada nilainya)
+                if ($product->type === 'goods') {
+                    $product->decrement('stock_quantity', $item['qty']);
+                    StockMovement::create([
+                        'product_id' => $product->id,
+                        'user_id' => auth()->id(),
+                        'type' => 'out',
+                        'quantity' => $item['qty'],
+                        'description' => 'POS: ' . $transaction->invoice_code,
                     ]);
-
-                    // 4. Kurangi Stok (Hanya jika Barang Inventaris)
-                    if (!$isCustom && $productId) {
-                        $product = Product::find($productId);
-                        if ($product && $product->type === 'goods') {
-                            // Cek stok cukup atau tidak (Opsional, tapi disarankan)
-                            if($product->stock_quantity < $qty) {
-                                throw new \Exception("Stok {$product->name} tidak cukup!");
-                            }
-                            $product->decrement('stock_quantity', $qty);
-                        }
-                    }
                 }
+            }
 
-                return response()->json([
-                    'status' => 'success',
-                    'invoice' => $transaction->invoice_code
-                ]);
-            });
+            DB::commit();
+
+            // Return JSON Invoice Code agar JS bisa panggil route print
+            return response()->json([
+                'status' => 'success',
+                'invoice_code' => $transaction->invoice_code,
+                'change' => $transaction->change_amount
+            ]);
 
         } catch (\Exception $e) {
-            // Jika error, kembalikan pesan ke frontend
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Transaksi Gagal: ' . $e->getMessage()
-            ], 500);
+            DB::rollBack();
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 400);
         }
     }
 
-    // 4. CETAK STRUK
+    // METHOD RECEIPT (DARI KODE BAPAK, DISESUAIKAN DIKIT)
     public function receipt($invoice_code)
     {
-        // 1. Ambil Data Transaksi
         $transaction = Transaction::where('invoice_code', $invoice_code)
             ->with(['items.product', 'user', 'customer'])
             ->firstOrFail();
 
-        // 2. AMBIL PENGATURAN DARI DATABASE (Supaya Header/Footer berubah)
-        $settings = \App\Models\Setting::pluck('value', 'key')->toArray();
+        // Cek apakah model Setting ada, kalau belum pakai array kosong dulu biar gak error
+        $settings = class_exists(\App\Models\Setting::class)
+            ? \App\Models\Setting::pluck('value', 'key')->toArray()
+            : [];
 
         return view('pos.receipt', compact('transaction', 'settings'));
     }

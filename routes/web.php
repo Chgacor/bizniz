@@ -12,6 +12,10 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\UserController;
 use App\Models\TransactionItem;
 use App\Models\Product;
+use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\ReturnController;
+use App\Http\Controllers\PromotionController;
+use App\Http\Controllers\HistoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,6 +33,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
+
+    Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
 
     // Profile Management
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -48,7 +54,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/pos/search', [PosController::class, 'search'])->name('pos.search'); // Search Produk
         Route::post('/pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
         Route::get('/transaction/{invoice_code}/receipt', [PosController::class, 'receipt'])->name('pos.receipt');
-
+        Route::get('/pos/print/{invoice_code}', [PosController::class, 'receipt'])->name('pos.print');
         // 3. Customers
         // --- PERBAIKAN: Taruh route spesifik DI ATAS Resource ---
         Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search');
@@ -56,6 +62,16 @@ Route::middleware('auth')->group(function () {
 
         // Resource goes LAST because it contains a wildcard path ({id})
         Route::resource('customers', CustomerController::class);
+
+        Route::get('/returns/create', [ReturnController::class, 'create'])->name('returns.create');
+        Route::get('/returns/search', [ReturnController::class, 'searchTransaction'])->name('returns.search');
+        Route::post('/returns/store', [ReturnController::class, 'store'])->name('returns.store');
+        Route::get('/returns/history', [ReturnController::class, 'index'])->name('returns.index');
+
+        Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
+
+        // TAMBAHKAN INI: Route untuk Simpan Transaksi
+        Route::post('/pos/store', [PosController::class, 'store'])->name('pos.store');
     });
 
     // =========================================================================
@@ -110,6 +126,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
 
         Route::get('/settings/backup', [SettingController::class, 'downloadBackup'])->name('settings.backup');
+
+        Route::get('/purchase/create', [PurchaseController::class, 'create'])->name('purchase.create');
+        Route::post('/purchase/store', [PurchaseController::class, 'store'])->name('purchase.store');
+        Route::get('/purchase/search-products', [PurchaseController::class, 'searchProducts'])->name('purchase.search');
+        Route::get('/purchase/history', [PurchaseController::class, 'index'])->name('purchase.index');
+
+        Route::resource('promotions', PromotionController::class);
+        Route::patch('/promotions/{promotion}/toggle', [PromotionController::class, 'toggleStatus'])->name('promotions.toggle');
     });
 
     // Notifikasi (Mark as Read)
@@ -119,5 +143,7 @@ Route::middleware('auth')->group(function () {
     })->name('notifications.read');
 
 });
+
+
 
 require __DIR__.'/auth.php';

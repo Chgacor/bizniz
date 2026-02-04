@@ -58,4 +58,30 @@ class Product extends Model
     {
         return $this->hasMany(StockMovement::class);
     }
+
+    // Tambahkan method ini di dalam class Product extends Model
+    public static function generateId($name)
+    {
+        $words = explode(' ', strtoupper(preg_replace('/[^a-zA-Z0-9 ]/', '', $name)));
+        $initials = '';
+
+        foreach ($words as $word) {
+            $initials .= substr($word, 0, 1);
+        }
+
+        $initials = substr($initials, 0, 3);
+
+        if (strlen($initials) < 2) {
+            $initials = substr(strtoupper($name), 0, 2);
+        }
+
+        $nextId = (self::withTrashed()->max('id') ?? 0) + 1;
+
+        return $initials . str_pad($nextId, 8, '0', STR_PAD_LEFT);
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(Category::class, 'category_id');
+    }
 }

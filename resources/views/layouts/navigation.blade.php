@@ -25,6 +25,19 @@
                     <x-nav-link :href="route('warehouse.index')" :active="request()->routeIs('warehouse.*')">
                         {{ __('Gudang') }}
                     </x-nav-link>
+                    @endrole
+
+                    @role('Owner|Admin')
+                    <x-nav-link :href="route('history.index')" :active="request()->routeIs('history.*')">
+                        {{ __('Riwayat') }}
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('promotions.index')" :active="request()->routeIs('promotions.*')">
+                        {{ __('Promo & Diskon') }}
+                    </x-nav-link>
+                    @endrole
+
+                    @role('Staff|Owner|Admin')
                     <x-nav-link :href="route('customers.index')" :active="request()->routeIs('customers.*')">
                         {{ __('Pelanggan') }}
                     </x-nav-link>
@@ -47,8 +60,6 @@
                         {{ __('Pengaturan') }}
                     </x-nav-link>
                     @endrole
-
-
                 </div>
             </div>
 
@@ -60,7 +71,6 @@
                                 <span class="font-bold text-gray-800">{{ Auth::user()->name }}</span>
                                 <span class="text-xs text-brand-500">{{ Auth::user()->getRoleNames()->first() }}</span>
                             </div>
-
                             <div class="ml-2 bg-brand-50 p-1 rounded-full">
                                 <svg class="fill-current h-5 w-5 text-brand-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                     <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -68,17 +78,14 @@
                             </div>
                         </button>
                     </x-slot>
-
                     <x-slot name="content">
                         <x-dropdown-link :href="route('profile.edit')">
                             {{ __('Profile') }}
                         </x-dropdown-link>
-
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
                             <x-dropdown-link :href="route('logout')"
-                                             onclick="event.preventDefault();
-                                                this.closest('form').submit();" class="text-red-600 hover:bg-red-50">
+                                             onclick="event.preventDefault(); this.closest('form').submit();" class="text-red-600 hover:bg-red-50">
                                 {{ __('Log Out') }}
                             </x-dropdown-link>
                         </form>
@@ -102,39 +109,39 @@
             <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
-
-            @role('Staff|Owner|Admin')
             <x-responsive-nav-link :href="route('pos.index')" :active="request()->routeIs('pos.*')">
                 {{ __('POS') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('warehouse.index')" :active="request()->routeIs('warehouse.*')">
                 {{ __('Gudang') }}
             </x-responsive-nav-link>
+
+            @role('Owner|Admin')
+            <x-responsive-nav-link :href="route('history.index')" :active="request()->routeIs('history.*')">
+                {{ __('Riwayat') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('promotions.index')" :active="request()->routeIs('promotions.*')">
+                {{ __('Promo & Diskon') }}
+            </x-responsive-nav-link>
             @endrole
 
-            @role('Viewer|Owner|Admin')
             <x-responsive-nav-link :href="route('analytics')" :active="request()->routeIs('analytics')">
                 {{ __('Analitik') }}
             </x-responsive-nav-link>
-            @endrole
         </div>
-
         <div class="pt-4 pb-1 border-t border-gray-200 bg-brand-50">
             <div class="px-4">
                 <div class="font-medium text-base text-brand-900">{{ Auth::user()->name }}</div>
                 <div class="font-medium text-sm text-brand-500">{{ Auth::user()->email }}</div>
             </div>
-
             <div class="mt-3 space-y-1">
                 <x-responsive-nav-link :href="route('profile.edit')">
                     {{ __('Profile') }}
                 </x-responsive-nav-link>
-
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <x-responsive-nav-link :href="route('logout')"
-                                           onclick="event.preventDefault();
-                                        this.closest('form').submit();" class="text-red-600">
+                                           onclick="event.preventDefault(); this.closest('form').submit();" class="text-red-600">
                         {{ __('Log Out') }}
                     </x-responsive-nav-link>
                 </form>

@@ -3,176 +3,173 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\Category;
 use App\Models\StockMovement;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class WarehouseController extends Controller
 {
-    // =========================================================
-    // UPDATE UTAMA ADA DI FUNGSI INDEX INI
-    // =========================================================
     public function index(Request $request)
     {
-        // 1. Mulai Query Builder
-        $query = Product::query();
+        $search = $request->search;
 
-        // 2. Cek apakah ada pencarian?
-        if ($request->filled('search')) {
-            $search = $request->search;
+        $goods = Product::where('type', 'goods')
+            ->where(function($q) use ($search) {
+                if ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('product_code', 'like', "%{$search}%");
+                }
+            })
+            ->latest()->paginate(10, ['*'], 'goods_page')->withQueryString();
 
-            // Cari berdasarkan Nama ATAU Kode Produk
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('product_code', 'like', "%{$search}%");
-            });
-        }
+        $services = Product::where('type', 'service')
+            ->where(function($q) use ($search) {
+                if ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('product_code', 'like', "%{$search}%");
+                }
+            })
+            ->latest()->paginate(10, ['*'], 'services_page')->withQueryString();
 
-        // 3. Ambil data (terbaru) & Paginate
-        // withQueryString() penting agar saat pindah halaman (page 2), pencarian tidak hilang
-        $products = $query->latest()->paginate(10)->withQueryString();
-
-        return view('warehouse.index', compact('products'));
+        return view('warehouse.index', compact('goods', 'services'));
     }
 
     public function create()
     {
-        return view('warehouse.create');
+        $categories = Category::orderBy('name')->get();
+        return view('warehouse.create', compact('categories'));
     }
 
     public function store(Request $request)
     {
-        // Validasi
         $request->validate([
             'name' => 'required|string|max:255',
-            'product_code' => 'required|unique:products,product_code',
             'category' => 'required|string',
-            'buy_price' => 'required|numeric|min:0',
+            'type' => 'required|in:goods,service',
+            'buy_price' => 'nullable|numeric|min:0',
             'sell_price' => 'required|numeric|min:0',
-            'stock_quantity' => 'required|integer|min:0',
+            'stock_quantity' => 'nullable|integer|min:0',
             'image' => 'nullable|image|max:2048',
-            // Tambahkan validasi tipe jika belum ada di form, default bisa 'goods'
-            'type' => 'nullable|in:goods,service',
         ]);
 
-        // Upload Gambar
-        $imagePath = null;
-        if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('products', 'public');
-        }
+        DB::beginTransaction();
+        try {
+            $category = Category::firstOrCreate(['name' => $request->category]);
 
-        // Tentukan tipe (jika tidak dikirim form, anggap goods)
-        $type = $request->type ?? 'goods';
+            $productCode = Product::generateId($request->name);
 
-        // Simpan
-        $product = Product::create([
-            'name' => $request->name,
-            'product_code' => $request->product_code,
-            'category' => $request->category,
-            'buy_price' => $request->buy_price,
-            'sell_price' => $request->sell_price,
-            'stock_quantity' => $request->stock_quantity,
-            'image_path' => $imagePath,
-            'type' => $type, // Pastikan kolom ini ada di database/model
-        ]);
+            $imagePath = null;
+            if ($request->hasFile('image')) {
+                $imagePath = $request->file('image')->store('products', 'public');
+            }
 
-        // Catat Stok Awal (Hanya jika tipe barang fisik)
-        if($type === 'goods') {
-            StockMovement::create([
-                'product_id' => $product->id,
-                'user_id' => auth()->id(),
-                'type' => 'in',
-                'quantity' => $request->stock_quantity,
-                'description' => 'Stok Awal (Barang Baru)',
+            $type = $request->type;
+            $stock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
+            $buyPrice = ($type === 'service') ? 0 : ($request->buy_price ?? 0);
+
+            $product = Product::create([
+                'product_code' => $productCode,
+                'name' => $request->name,
+                'category' => $category->name,
+                'type' => $type,
+                'buy_price' => $buyPrice,
+                'sell_price' => $request->sell_price,
+                'stock_quantity' => $stock,
+                'image_path' => $imagePath,
             ]);
-        }
 
-        return redirect()->route('warehouse.index')->with('success', 'Produk berhasil ditambahkan!');
+            if ($type === 'goods' && $stock > 0) {
+                StockMovement::create([
+                    'product_id' => $product->id,
+                    'user_id' => auth()->id(),
+                    'type' => 'in',
+                    'quantity' => $stock,
+                    'description' => 'Stok Awal (Manual)',
+                ]);
+            }
+
+            DB::commit();
+            return redirect()->route('warehouse.index')->with('success', 'Produk berhasil ditambahkan: ' . $productCode);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal menyimpan: ' . $e->getMessage());
+        }
     }
 
     public function edit($id)
     {
-        if(auth()->user()->hasRole('Staff')) {
-            abort(403, 'Akses Ditolak: Staff tidak diperbolehkan mengedit barang.');
-        }
-
         $product = Product::findOrFail($id);
-        return view('warehouse.edit', compact('product'));
+        $categories = Category::orderBy('name')->get();
+        return view('warehouse.edit', compact('product', 'categories'));
     }
 
     public function update(Request $request, $id)
     {
-        if(auth()->user()->hasRole('Staff')) {
-            abort(403, 'Akses Ditolak.');
-        }
-
         $product = Product::findOrFail($id);
 
         $request->validate([
             'name' => 'required|string|max:255',
             'category' => 'required|string',
-            'buy_price' => 'required|numeric|min:0',
+            'type' => 'required|in:goods,service',
+            'buy_price' => 'nullable|numeric|min:0',
             'sell_price' => 'required|numeric|min:0',
-            'stock_quantity' => 'required|integer|min:0',
+            'stock_quantity' => 'nullable|integer|min:0',
             'image' => 'nullable|image|max:2048',
         ]);
 
-        // Cek Logika Stok (Hanya untuk Barang Fisik)
-        if ($product->type === 'goods' || $product->type === null) {
-            $oldStock = $product->stock_quantity;
-            $newStock = $request->stock_quantity;
+        DB::beginTransaction();
+        try {
+            $category = Category::firstOrCreate(['name' => $request->category]);
 
-            if ($newStock != $oldStock) {
-                $diff = $newStock - $oldStock;
-                StockMovement::create([
-                    'product_id' => $product->id,
-                    'user_id' => auth()->id(),
-                    'type' => $diff > 0 ? 'adjustment_in' : 'adjustment_out',
-                    'quantity' => abs($diff),
-                    'description' => 'Koreksi Stok Manual (Edit Produk)',
-                ]);
+            if ($request->hasFile('image')) {
+                if ($product->image_path && Storage::exists('public/' . $product->image_path)) {
+                    Storage::delete('public/' . $product->image_path);
+                }
+                $product->image_path = $request->file('image')->store('products', 'public');
             }
-        }
 
-        // Handle Upload Foto Baru
-        if ($request->hasFile('image')) {
-            if ($product->image_path && \Illuminate\Support\Facades\Storage::exists('public/' . $product->image_path)) {
-                \Illuminate\Support\Facades\Storage::delete('public/' . $product->image_path);
+            $type = $request->type;
+            $newStock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
+
+            if ($type === 'goods') {
+                $oldStock = $product->stock_quantity;
+                if ($newStock != $oldStock) {
+                    $diff = $newStock - $oldStock;
+                    StockMovement::create([
+                        'product_id' => $product->id,
+                        'user_id' => auth()->id(),
+                        'type' => $diff > 0 ? 'adjustment_in' : 'adjustment_out',
+                        'quantity' => abs($diff),
+                        'description' => 'Koreksi Stok (Edit)',
+                    ]);
+                }
             }
-            $imagePath = $request->file('image')->store('products', 'public');
-            $product->image_path = $imagePath;
+
+            $product->update([
+                'name' => $request->name,
+                'category' => $category->name,
+                'type' => $type,
+                'buy_price' => ($type === 'service') ? 0 : $request->buy_price,
+                'sell_price' => $request->sell_price,
+                'stock_quantity' => $newStock,
+            ]);
+
+            DB::commit();
+            return redirect()->route('warehouse.index')->with('success', 'Data produk diperbarui.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal update: ' . $e->getMessage());
         }
-
-        // Update Data Produk
-        $product->update([
-            'name' => $request->name,
-            'category' => $request->category,
-            'buy_price' => $request->buy_price,
-            'sell_price' => $request->sell_price,
-            'stock_quantity' => $request->stock_quantity,
-        ]);
-
-        return redirect()->route('warehouse.index')->with('success', 'Data produk berhasil diperbarui.');
-    }
-
-    public function show($id)
-    {
-        return redirect()->route('warehouse.edit', $id);
     }
 
     public function destroy($id)
     {
-        if(auth()->user()->hasRole('Staff')) {
-            abort(403, 'Akses Ditolak.');
-        }
-
         $product = Product::findOrFail($id);
-
-        // Hapus gambar fisik jika ada
-        if ($product->image_path && \Illuminate\Support\Facades\Storage::exists('public/' . $product->image_path)) {
-            \Illuminate\Support\Facades\Storage::delete('public/' . $product->image_path);
-        }
-
         $product->delete();
-        return redirect()->route('warehouse.index')->with('success', 'Produk dihapus.');
+        return redirect()->route('warehouse.index')->with('success', 'Produk dihapus (Soft Delete).');
     }
 }
