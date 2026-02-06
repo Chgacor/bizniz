@@ -5,58 +5,79 @@ namespace App\Http\Controllers;
 use App\Models\Setting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class SettingController extends Controller
 {
     public function index()
     {
-        // AMBIL SEMUA SETTING & JADIKAN ARRAY
-        // Hasilnya: ['business_name' => 'My Bizniz', 'tax_rate' => '11', ...]
-        $settings = Setting::all()->pluck('value', 'key')->toArray();
-
+        // Ambil settings sebagai array [key => value]
+        $settings = Setting::pluck('value', 'key')->toArray();
         return view('settings.index', compact('settings'));
     }
 
     public function update(Request $request)
     {
-        // Ambil semua data input KECUALI token CSRF
-        $data = $request->except('_token');
+        // 1. Handle Checkbox (Karena HTML tidak kirim value kalau unchecked)
+        // Kita paksa set jadi 0 jika tidak ada di request
+        $checkboxes = ['show_logo_on_receipt'];
+        foreach ($checkboxes as $box) {
+            if (!$request->has($box)) {
+                $request->merge([$box => '0']);
+            }
+        }
 
-        // Loop otomatis untuk menyimpan semua input
+        // 2. Ambil semua data kecuali token & file
+        $data = $request->except(['_token', '_method', 'shop_logo']);
+
+        // 3. Simpan Text Settings
         foreach ($data as $key => $value) {
-            // Jika input kosong, simpan null. Jika ada isi, simpan isinya.
+            // Gunakan updateOrCreate agar tidak duplikat key
             Setting::updateOrCreate(
                 ['key' => $key],
                 ['value' => $value]
             );
         }
 
-        return back()->with('success', 'Konfigurasi berhasil disimpan!');
+        // 4. Handle Upload Logo
+        if ($request->hasFile('shop_logo')) {
+            // Hapus logo lama jika ada (Opsional, biar hemat storage)
+            $oldLogo = Setting::where('key', 'shop_logo')->value('value');
+            if ($oldLogo) Storage::disk('public')->delete($oldLogo);
+
+            $path = $request->file('shop_logo')->store('logos', 'public');
+            Setting::updateOrCreate(['key' => 'shop_logo'], ['value' => $path]);
+        }
+
+        return back()->with('success', 'Konfigurasi sistem berhasil diperbarui! 🚀');
     }
 
-    // Fitur Backup Database (Sesuai request sebelumnya)
+    // Fitur Backup Database Manual
     public function downloadBackup()
     {
         $dbName = env('DB_DATABASE');
-        $tables = \Illuminate\Support\Facades\DB::select('SHOW TABLES');
-        $return = "";
+        $tables = DB::select('SHOW TABLES');
+        $return = "-- Backup Database Bizniz.IO\n-- Tanggal: " . date('d-m-Y H:i:s') . "\n\n";
 
-        // 1. Loop semua tabel di database
         foreach ($tables as $table) {
             $tableName = $table->{'Tables_in_' . $dbName};
 
-            // Ambil struktur tabel (CREATE TABLE ...)
-            $createTable = \Illuminate\Support\Facades\DB::select("SHOW CREATE TABLE `$tableName`");
-            $return .= "\n\n" . $createTable[0]->{'Create Table'} . ";\n\n";
+            // Skip tabel migrasi biar gak error pas import ulang
+            if($tableName == 'migrations') continue;
 
-            // Ambil isi data (INSERT INTO ...)
-            $rows = \Illuminate\Support\Facades\DB::table($tableName)->get();
+            $return .= "\n\n-- Struktur Table: $tableName --\n";
+            $return .= "DROP TABLE IF EXISTS `$tableName`;\n";
+
+            $createTable = DB::select("SHOW CREATE TABLE `$tableName`");
+            $return .= $createTable[0]->{'Create Table'} . ";\n\n";
+
+            $return .= "-- Data Table: $tableName --\n";
+            $rows = DB::table($tableName)->get();
 
             foreach ($rows as $row) {
                 $return .= "INSERT INTO `$tableName` VALUES(";
                 $values = [];
-
-                foreach ($row as $key => $val) {
+                foreach ($row as $val) {
                     if (is_null($val)) {
                         $values[] = "NULL";
                     } elseif (is_numeric($val)) {
@@ -65,24 +86,15 @@ class SettingController extends Controller
                         $values[] = "'" . addslashes($val) . "'";
                     }
                 }
-
                 $return .= implode(',', $values);
                 $return .= ");\n";
             }
         }
 
-        // 2. Simpan ke file
-        $fileName = 'backup-' . date('Y-m-d-H-i-s') . '.sql';
-        $path = storage_path("app/" . $fileName);
+        $fileName = 'backup_bizniz_' . date('Y_m_d_His') . '.sql';
 
-        // Pastikan folder ada
-        if(!file_exists(storage_path("app"))) {
-            mkdir(storage_path("app"), 0777, true);
-        }
-
-        file_put_contents($path, $return);
-
-        // 3. Download dan Hapus file dari server setelah dikirim
-        return response()->download($path)->deleteFileAfterSend(true);
+        return response()->streamDownload(function () use ($return) {
+            echo $return;
+        }, $fileName);
     }
 }

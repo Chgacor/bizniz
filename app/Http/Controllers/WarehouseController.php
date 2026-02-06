@@ -15,20 +15,23 @@ class WarehouseController extends Controller
     {
         $search = $request->search;
 
+        // Ambil Data Barang (Goods)
         $goods = Product::where('type', 'goods')
             ->where(function($q) use ($search) {
                 if ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('product_code', 'like', "%{$search}%");
+                        ->orWhere('product_code', 'like', "%{$search}%")
+                        ->orWhere('category', 'like', "%{$search}%");
                 }
             })
             ->latest()->paginate(10, ['*'], 'goods_page')->withQueryString();
 
+        // Ambil Data Jasa (Service)
         $services = Product::where('type', 'service')
             ->where(function($q) use ($search) {
                 if ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                        ->orWhere('product_code', 'like', "%{$search}%");
+                        ->orWhere('category', 'like', "%{$search}%");
                 }
             })
             ->latest()->paginate(10, ['*'], 'services_page')->withQueryString();
@@ -39,7 +42,12 @@ class WarehouseController extends Controller
     public function create()
     {
         $categories = Category::orderBy('name')->get();
-        return view('warehouse.create', compact('categories'));
+
+        // Hitung urutan selanjutnya KHUSUS BARANG untuk preview
+        $countGoods = Product::where('type', 'goods')->count();
+        $nextSequence = str_pad($countGoods + 1, 8, '0', STR_PAD_LEFT);
+
+        return view('warehouse.create', compact('categories', 'nextSequence'));
     }
 
     public function store(Request $request)
@@ -52,13 +60,24 @@ class WarehouseController extends Controller
             'sell_price' => 'required|numeric|min:0',
             'stock_quantity' => 'nullable|integer|min:0',
             'image' => 'nullable|image|max:2048',
+            'product_code' => 'nullable|unique:products,product_code',
         ]);
 
         DB::beginTransaction();
         try {
             $category = Category::firstOrCreate(['name' => $request->category]);
 
-            $productCode = Product::generateId($request->name);
+            // === LOGIKA GENERATE KODE (PERBAIKAN) ===
+            $productCode = null;
+
+            if ($request->type === 'goods') {
+                // Barang: Pakai Inisial + Urutan (Contoh: vr00000001)
+                $productCode = $this->generateProductCode($request->name);
+            } else {
+                // Jasa: Pakai Kode Internal Acak (SRV + Waktu)
+                // Supaya database tidak error "Column cannot be null"
+                $productCode = 'SRV-' . time() . rand(10,99);
+            }
 
             $imagePath = null;
             if ($request->hasFile('image')) {
@@ -66,6 +85,7 @@ class WarehouseController extends Controller
             }
 
             $type = $request->type;
+            // Jika service, stok & modal otomatis 0
             $stock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
             $buyPrice = ($type === 'service') ? 0 : ($request->buy_price ?? 0);
 
@@ -80,6 +100,7 @@ class WarehouseController extends Controller
                 'image_path' => $imagePath,
             ]);
 
+            // Catat Stok Awal (Hanya Barang)
             if ($type === 'goods' && $stock > 0) {
                 StockMovement::create([
                     'product_id' => $product->id,
@@ -91,7 +112,12 @@ class WarehouseController extends Controller
             }
 
             DB::commit();
-            return redirect()->route('warehouse.index')->with('success', 'Produk berhasil ditambahkan: ' . $productCode);
+
+            $pesan = ($type === 'goods')
+                ? 'Barang berhasil ditambah! Kode: ' . $productCode
+                : 'Jasa service berhasil ditambahkan!';
+
+            return redirect()->route('warehouse.index')->with('success', $pesan);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -134,6 +160,7 @@ class WarehouseController extends Controller
             $type = $request->type;
             $newStock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
 
+            // Logika Perubahan Stok (Hanya Barang)
             if ($type === 'goods') {
                 $oldStock = $product->stock_quantity;
                 if ($newStock != $oldStock) {
@@ -148,6 +175,16 @@ class WarehouseController extends Controller
                 }
             }
 
+            // Generate Kode jika tipe berubah (Jaga-jaga)
+            // 1. Service -> Goods: Buat kode baru
+            if ($type === 'goods' && (str_contains($product->product_code, 'SRV-') || $product->product_code === null)) {
+                $product->product_code = $this->generateProductCode($request->name);
+            }
+            // 2. Goods -> Service: Ubah jadi kode dummy
+            if ($type === 'service') {
+                $product->product_code = 'SRV-' . time() . rand(10,99);
+            }
+
             $product->update([
                 'name' => $request->name,
                 'category' => $category->name,
@@ -155,10 +192,11 @@ class WarehouseController extends Controller
                 'buy_price' => ($type === 'service') ? 0 : $request->buy_price,
                 'sell_price' => $request->sell_price,
                 'stock_quantity' => $newStock,
+                'product_code' => $product->product_code,
             ]);
 
             DB::commit();
-            return redirect()->route('warehouse.index')->with('success', 'Data produk diperbarui.');
+            return redirect()->route('warehouse.index')->with('success', 'Data diperbarui.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -170,6 +208,25 @@ class WarehouseController extends Controller
     {
         $product = Product::findOrFail($id);
         $product->delete();
-        return redirect()->route('warehouse.index')->with('success', 'Produk dihapus (Soft Delete).');
+        return redirect()->route('warehouse.index')->with('success', 'Item dihapus.');
+    }
+
+    // --- FUNGSI GENERATOR KODE (Barang) ---
+    private function generateProductCode($name)
+    {
+        $words = preg_split("/\s+/", $name);
+        $initials = "";
+
+        foreach ($words as $word) {
+            $cleanChar = preg_replace('/[^a-zA-Z0-9]/', '', substr($word, 0, 1));
+            $initials .= strtolower($cleanChar);
+        }
+
+        if (empty($initials)) $initials = "x";
+
+        $countGoods = Product::where('type', 'goods')->count();
+        $nextSequence = $countGoods + 1;
+
+        return $initials . str_pad($nextSequence, 8, '0', STR_PAD_LEFT);
     }
 }

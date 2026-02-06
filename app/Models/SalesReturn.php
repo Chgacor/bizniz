@@ -9,7 +9,7 @@ class SalesReturn extends Model
 {
     use HasFactory;
 
-    protected $table = 'returns';
+    protected $table = 'returns'; // Pastikan nama tabel di database 'returns'
     protected $guarded = ['id'];
 
     public function transaction()
@@ -22,6 +22,7 @@ class SalesReturn extends Model
         return $this->belongsTo(User::class);
     }
 
+    // Relasi ke Detail Barang
     public function items()
     {
         return $this->hasMany(ReturnItem::class, 'return_id');

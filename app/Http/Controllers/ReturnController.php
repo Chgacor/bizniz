@@ -2,125 +2,142 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Transaction;
-use App\Models\SalesReturn;
-use App\Models\ReturnItem;
+use App\Models\SalesReturn; // Model Header (Tabel returns)
+use App\Models\ReturnItem;  // Model Detail (Tabel return_items)
 use App\Models\Product;
+use App\Models\Transaction;
 use App\Models\StockMovement;
+use App\Models\TransactionItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class ReturnController extends Controller
 {
     public function index()
     {
-        $returns = SalesReturn::with(['transaction', 'user'])->latest()->paginate(10);
+        // Load data
+        $returns = SalesReturn::with(['transaction', 'user', 'items.product'])
+            ->latest()
+            ->paginate(10);
+
+        // PERBAIKAN: Folder view pakai 'return' (singular)
         return view('return.index', compact('returns'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
-        return view('return.create');
-    }
+        $transaction = null;
 
-    public function searchTransaction(Request $request)
-    {
-        $code = $request->query('code');
+        if ($request->has('invoice_code')) {
+            $code = $request->invoice_code;
 
-        $transaction = Transaction::with(['items.product', 'customer'])
-            ->where('invoice_code', $code)
-            ->first();
-
-        if (!$transaction) {
-            return response()->json(['status' => 'error', 'message' => 'Transaksi tidak ditemukan!']);
+            $transaction = Transaction::with(['items.product' => function($q) {
+                $q->withTrashed();
+            }, 'customer'])
+                ->where('invoice_code', $code)
+                ->first();
         }
 
-        $historyReturns = SalesReturn::with('items')
-            ->where('transaction_id', $transaction->id)
-            ->get();
-
-        $items = $transaction->items->map(function ($item) use ($historyReturns) {
-            $returnedQty = $historyReturns->flatMap->items
-                ->where('product_id', $item->product_id)
-                ->sum('quantity');
-
-            return [
-                'id' => $item->id,
-                'product_id' => $item->product_id,
-                'product_name' => $item->name,
-                'sold_qty' => $item->quantity,
-                'returned_qty' => $returnedQty,
-                'available_qty' => $item->quantity - $returnedQty,
-                'price' => $item->price_at_sale
-            ];
-        });
-
-        return response()->json([
-            'status' => 'success',
-            'transaction' => $transaction,
-            'items' => $items
-        ]);
+        // PERBAIKAN: Folder view pakai 'return' (singular)
+        return view('return.create', compact('transaction'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
             'transaction_id' => 'required|exists:transactions,id',
-            'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'items.*.condition' => 'required|in:good,bad',
+            'items' => 'required|array',
+            'reason' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
         try {
-            $return = SalesReturn::create([
-                'return_code' => 'RET-' . date('YmdHis'),
+            $hasReturn = false;
+            $itemsToReturn = [];
+            $totalRefund = 0; // Variabel untuk menampung total uang kembali
+
+            // 1. Validasi & Hitung Total Refund DULU
+            foreach ($request->items as $itemId => $data) {
+                if (isset($data['qty_return']) && $data['qty_return'] > 0) {
+                    $hasReturn = true;
+                    $trxItem = TransactionItem::find($itemId);
+
+                    // Validasi Qty
+                    if ($data['qty_return'] > $trxItem->quantity) {
+                        throw new \Exception("Qty retur melebihi qty beli untuk item: " . $trxItem->name);
+                    }
+
+                    // Hitung nominal refund per item
+                    $refundAmount = $trxItem->price_at_sale * $data['qty_return'];
+
+                    // Tambahkan ke total keseluruhan (INI YANG BIKIN ERROR SEBELUMNYA KARENA KOSONG)
+                    $totalRefund += $refundAmount;
+
+                    $itemsToReturn[] = [
+                        'trx_item' => $trxItem,
+                        'qty' => $data['qty_return'],
+                        'condition' => $data['condition'],
+                        'refund' => $refundAmount
+                    ];
+                }
+            }
+
+            if (!$hasReturn) {
+                return back()->with('error', 'Pilih minimal 1 barang untuk diretur.');
+            }
+
+            // Generate Kode Retur: RET-YYYYMMDD-XXX
+            $today = date('Ymd');
+            $count = SalesReturn::whereDate('created_at', today())->count() + 1;
+            $returnCode = 'RET-' . $today . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+
+            // 2. Simpan Header (SalesReturn)
+            $salesReturn = SalesReturn::create([
+                'return_code' => $returnCode,
                 'transaction_id' => $request->transaction_id,
                 'user_id' => auth()->id(),
                 'reason' => $request->reason,
-                'total_refund' => 0
+                'total_refund' => $totalRefund, // <--- SUDAH DITAMBAHKAN (SOLUSI ERROR 1364)
             ]);
 
-            $totalRefund = 0;
+            // 3. Simpan Detail Item (ReturnItem) & Update Stok
+            foreach ($itemsToReturn as $data) {
+                $trxItem = $data['trx_item'];
 
-            foreach ($request->items as $item) {
-                if ($item['quantity'] > 0) {
+                ReturnItem::create([
+                    'return_id' => $salesReturn->id,
+                    'product_id' => $trxItem->product_id,
+                    'quantity' => $data['qty'],
+                    'condition' => $data['condition'],
+                    'refund_amount' => $data['refund'],
+                ]);
 
-                    ReturnItem::create([
-                        'return_id' => $return->id,
-                        'product_id' => $item['product_id'],
-                        'quantity' => $item['quantity'],
-                        'condition' => $item['condition']
-                    ]);
-
-                    $product = Product::find($item['product_id']);
-                    $refundAmount = $item['price'] * $item['quantity'];
-                    $totalRefund += $refundAmount;
-
-                    if ($item['condition'] === 'good' && $product->type === 'goods') {
-                        $product->increment('stock_quantity', $item['quantity']);
+                // 4. Kembalikan Stok (Hanya jika kondisi BAGUS & Produk ada)
+                if ($data['condition'] === 'good' && $trxItem->product_id) {
+                    $product = Product::find($trxItem->product_id);
+                    if ($product && $product->type === 'goods') {
+                        $product->increment('stock_quantity', $data['qty']);
 
                         StockMovement::create([
                             'product_id' => $product->id,
                             'user_id' => auth()->id(),
                             'type' => 'in',
-                            'quantity' => $item['quantity'],
-                            'description' => 'Retur Penjualan: ' . $return->return_code,
+                            'quantity' => $data['qty'],
+                            'description' => 'Retur ' . $returnCode,
                         ]);
                     }
                 }
             }
 
-            $return->update(['total_refund' => $totalRefund]);
-
             DB::commit();
-            return response()->json(['status' => 'success', 'message' => 'Retur berhasil diproses.']);
+
+            // PERBAIKAN: Redirect ke route index (pastikan nama route di web.php sesuai)
+            // Jika nama route bapak 'returns.index', biarkan. Jika 'return.index', ubah di sini.
+            return redirect()->route('returns.index')->with('success', 'Retur berhasil! Kode: ' . $returnCode);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            return back()->with('error', 'Gagal: ' . $e->getMessage());
         }
     }
 }

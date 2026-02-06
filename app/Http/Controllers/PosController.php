@@ -43,6 +43,7 @@ class PosController extends Controller
         $request->validate([
             'cart' => 'required|array|min:1',
             'paid_amount' => 'required|numeric',
+            'payment_method' => 'required|in:cash,transfer,qris,debit',
         ]);
 
         DB::beginTransaction();
@@ -50,16 +51,22 @@ class PosController extends Controller
             $cart = $request->cart;
             $subtotal = 0;
 
-            // 1. Hitung Subtotal & Validasi Stok
+            // 1. Hitung Subtotal
             foreach ($cart as $item) {
-                $product = Product::find($item['id']);
-                if ($product->type === 'goods' && $product->stock_quantity < $item['qty']) {
-                    throw new \Exception("Stok {$product->name} kurang! Sisa: {$product->stock_quantity}");
+                if (isset($item['is_custom']) && $item['is_custom']) {
+                    $subtotal += $item['price'] * $item['qty'];
+                } else {
+                    $product = Product::find($item['id']);
+                    if (!$product) throw new \Exception("Produk tidak ditemukan.");
+
+                    if ($product->type === 'goods' && $product->stock_quantity < $item['qty']) {
+                        throw new \Exception("Stok {$product->name} kurang! Sisa: {$product->stock_quantity}");
+                    }
+                    $subtotal += $product->sell_price * $item['qty'];
                 }
-                $subtotal += $product->sell_price * $item['qty'];
             }
 
-            // 2. Hitung Diskon (Manual / Promo)
+            // 2. Hitung Diskon
             $discountAmount = 0;
             $promotionId = null;
 
@@ -77,11 +84,12 @@ class PosController extends Controller
 
             $grandTotal = $subtotal - $discountAmount;
 
-            if ($request->paid_amount < $grandTotal) {
-                throw new \Exception("Pembayaran kurang!");
+            // Validasi Bayar (Khusus Cash)
+            if ($request->payment_method === 'cash' && $request->paid_amount < $grandTotal) {
+                throw new \Exception("Uang pembayaran kurang!");
             }
 
-            // 3. Simpan Transaksi
+            // 3. Simpan Transaksi Header
             $transaction = Transaction::create([
                 'invoice_code' => 'INV-' . date('Ymd') . '-' . Str::upper(Str::random(4)),
                 'user_id' => auth()->id(),
@@ -91,37 +99,55 @@ class PosController extends Controller
                 'discount_amount' => $discountAmount,
                 'tax_amount' => 0,
                 'total_amount' => $grandTotal,
-                'paid_amount' => $request->paid_amount, // DB kita pakai paid_amount
+                'paid_amount' => $request->paid_amount,
                 'change_amount' => $request->paid_amount - $grandTotal,
-                'payment_method' => 'cash',
+                'payment_method' => $request->payment_method,
             ]);
 
-            // 4. Simpan Detail & Kurangi Stok
+            // 4. Simpan Detail Item (FIX: SIMPAN NAMA & SUBTOTAL)
             foreach ($cart as $item) {
-                $product = Product::find($item['id']);
+                $isCustom = isset($item['is_custom']) && $item['is_custom'];
+
+                // Tentukan data produk
+                if ($isCustom) {
+                    $productId = null;
+                    $itemName = $item['name']; // Nama dari input manual
+                    $price = $item['price'];
+                } else {
+                    $product = Product::find($item['id']);
+                    $productId = $product->id;
+                    $itemName = $product->name; // Nama dari database
+                    $price = $product->sell_price;
+                }
+
+                // Create Item
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
-                    'product_id' => $product->id,
+                    'product_id' => $productId,
+                    'name' => $itemName, // PENTING: Simpan nama agar tidak "Item Hapus"
                     'quantity' => $item['qty'],
-                    'price_at_sale' => $product->sell_price,
-                    'subtotal' => $product->sell_price * $item['qty'],
+                    'price_at_sale' => $price,
+                    'subtotal' => $price * $item['qty'], // Hitung subtotal per item
                 ]);
 
-                if ($product->type === 'goods') {
-                    $product->decrement('stock_quantity', $item['qty']);
-                    StockMovement::create([
-                        'product_id' => $product->id,
-                        'user_id' => auth()->id(),
-                        'type' => 'out',
-                        'quantity' => $item['qty'],
-                        'description' => 'POS: ' . $transaction->invoice_code,
-                    ]);
+                // Kurangi Stok (Hanya Barang DB)
+                if (!$isCustom && $productId) {
+                    $prod = Product::find($productId);
+                    if ($prod && $prod->type === 'goods') {
+                        $prod->decrement('stock_quantity', $item['qty']);
+                        StockMovement::create([
+                            'product_id' => $prod->id,
+                            'user_id' => auth()->id(),
+                            'type' => 'out',
+                            'quantity' => $item['qty'],
+                            'description' => 'POS: ' . $transaction->invoice_code,
+                        ]);
+                    }
                 }
             }
 
             DB::commit();
 
-            // Return JSON Invoice Code agar JS bisa panggil route print
             return response()->json([
                 'status' => 'success',
                 'invoice_code' => $transaction->invoice_code,
