@@ -17,8 +17,6 @@ class CustomerController extends Controller
                 ->orWhere('phone', 'LIKE', "%{$q}%");
         }
 
-        // LOAD RELASI LENGKAP: Transactions -> Items -> Product
-        // Ini kunci agar perhitungan 'Jasa' vs 'Part' bisa dilakukan
         $customers = $query->with(['transactions.items.product'])
             ->latest()
             ->paginate(10);
@@ -26,24 +24,20 @@ class CustomerController extends Controller
         return view('customers.index', compact('customers'));
     }
 
-    // ... (Biarkan fungsi store, update, destroy tetap seperti kode Anda sebelumnya) ...
-    // Pastikan fungsi di bawah ini ada untuk POS:
-
     public function search(Request $request)
     {
-        $query = trim($request->get('query')); // Trim whitespace
+        $query = trim($request->get('query'));
 
-        // Return empty array if search is too short (optional, but good for performance)
         if (strlen($query) < 1) {
             return response()->json([]);
         }
 
         $customers = \App\Models\Customer::query()
-            ->where('name', 'LIKE', "%{$query}%") // Case-insensitive in MySQL by default
+            ->where('name', 'LIKE', "%{$query}%")
             ->orWhere('phone', 'LIKE', "%{$query}%")
             ->latest()
-            ->take(10) // Limit results to prevent UI lag
-            ->get(['id', 'name', 'phone']);// Optimize: select only needed cols
+            ->take(10)
+            ->get(['id', 'name', 'phone']);
 
         return response()->json($customers);
     }
@@ -55,7 +49,6 @@ class CustomerController extends Controller
         return response()->json(['status' => 'success', 'customer' => $c]);
     }
 
-    // CRUD Standar (Store, Update, Destroy)
     public function store(Request $request) {
         Customer::create($request->all()); return back();
     }

@@ -67,15 +67,11 @@ class WarehouseController extends Controller
         try {
             $category = Category::firstOrCreate(['name' => $request->category]);
 
-            // === LOGIKA GENERATE KODE (PERBAIKAN) ===
             $productCode = null;
 
             if ($request->type === 'goods') {
-                // Barang: Pakai Inisial + Urutan (Contoh: vr00000001)
                 $productCode = $this->generateProductCode($request->name);
             } else {
-                // Jasa: Pakai Kode Internal Acak (SRV + Waktu)
-                // Supaya database tidak error "Column cannot be null"
                 $productCode = 'SRV-' . time() . rand(10,99);
             }
 
@@ -85,7 +81,6 @@ class WarehouseController extends Controller
             }
 
             $type = $request->type;
-            // Jika service, stok & modal otomatis 0
             $stock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
             $buyPrice = ($type === 'service') ? 0 : ($request->buy_price ?? 0);
 
@@ -100,7 +95,6 @@ class WarehouseController extends Controller
                 'image_path' => $imagePath,
             ]);
 
-            // Catat Stok Awal (Hanya Barang)
             if ($type === 'goods' && $stock > 0) {
                 StockMovement::create([
                     'product_id' => $product->id,
@@ -160,7 +154,6 @@ class WarehouseController extends Controller
             $type = $request->type;
             $newStock = ($type === 'service') ? 0 : ($request->stock_quantity ?? 0);
 
-            // Logika Perubahan Stok (Hanya Barang)
             if ($type === 'goods') {
                 $oldStock = $product->stock_quantity;
                 if ($newStock != $oldStock) {
@@ -175,12 +168,9 @@ class WarehouseController extends Controller
                 }
             }
 
-            // Generate Kode jika tipe berubah (Jaga-jaga)
-            // 1. Service -> Goods: Buat kode baru
             if ($type === 'goods' && (str_contains($product->product_code, 'SRV-') || $product->product_code === null)) {
                 $product->product_code = $this->generateProductCode($request->name);
             }
-            // 2. Goods -> Service: Ubah jadi kode dummy
             if ($type === 'service') {
                 $product->product_code = 'SRV-' . time() . rand(10,99);
             }
@@ -211,7 +201,6 @@ class WarehouseController extends Controller
         return redirect()->route('warehouse.index')->with('success', 'Item dihapus.');
     }
 
-    // --- FUNGSI GENERATOR KODE (Barang) ---
     private function generateProductCode($name)
     {
         $words = preg_split("/\s+/", $name);

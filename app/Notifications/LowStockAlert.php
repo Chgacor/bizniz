@@ -19,7 +19,7 @@ class LowStockAlert extends Notification
 
     public function via($notifiable)
     {
-        return ['database']; // Store in DB, don't email
+        return ['database'];
     }
 
     public function toArray($notifiable)

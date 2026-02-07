@@ -17,7 +17,6 @@ class Promotion extends Model
         'is_active' => 'boolean',
     ];
 
-    // Helper untuk mengecek apakah promo masih berlaku hari ini
     public function isValid()
     {
         if (!$this->is_active) return false;

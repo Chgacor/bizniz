@@ -9,7 +9,7 @@ class SalesReturn extends Model
 {
     use HasFactory;
 
-    protected $table = 'returns'; // Pastikan nama tabel di database 'returns'
+    protected $table = 'returns';
     protected $guarded = ['id'];
 
     public function transaction()

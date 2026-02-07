@@ -12,7 +12,7 @@ class Product extends Model
 
     protected $fillable = [
         'name',
-        'product_code', // Controller yang akan isi ini
+        'product_code',
         'category',
         'type',
         'buy_price',
@@ -21,7 +21,6 @@ class Product extends Model
         'image_path',
     ];
 
-    // Hubungan ke tabel history stok
     public function movements()
     {
         return $this->hasMany(StockMovement::class);

@@ -37,7 +37,6 @@ class PosController extends Controller
         return view('pos.index', compact('products', 'customers', 'promotions'));
     }
 
-    // METHOD STORE (LOGIKA DISKON & PROMO TETAP DIPERTAHANKAN)
     public function store(Request $request)
     {
         $request->validate([
@@ -51,7 +50,6 @@ class PosController extends Controller
             $cart = $request->cart;
             $subtotal = 0;
 
-            // 1. Hitung Subtotal
             foreach ($cart as $item) {
                 if (isset($item['is_custom']) && $item['is_custom']) {
                     $subtotal += $item['price'] * $item['qty'];
@@ -66,7 +64,6 @@ class PosController extends Controller
                 }
             }
 
-            // 2. Hitung Diskon
             $discountAmount = 0;
             $promotionId = null;
 
@@ -89,7 +86,6 @@ class PosController extends Controller
                 throw new \Exception("Uang pembayaran kurang!");
             }
 
-            // 3. Simpan Transaksi Header
             $transaction = Transaction::create([
                 'invoice_code' => 'INV-' . date('Ymd') . '-' . Str::upper(Str::random(4)),
                 'user_id' => auth()->id(),
@@ -104,33 +100,29 @@ class PosController extends Controller
                 'payment_method' => $request->payment_method,
             ]);
 
-            // 4. Simpan Detail Item (FIX: SIMPAN NAMA & SUBTOTAL)
             foreach ($cart as $item) {
                 $isCustom = isset($item['is_custom']) && $item['is_custom'];
 
-                // Tentukan data produk
                 if ($isCustom) {
                     $productId = null;
-                    $itemName = $item['name']; // Nama dari input manual
+                    $itemName = $item['name'];
                     $price = $item['price'];
                 } else {
                     $product = Product::find($item['id']);
                     $productId = $product->id;
-                    $itemName = $product->name; // Nama dari database
+                    $itemName = $product->name;
                     $price = $product->sell_price;
                 }
 
-                // Create Item
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
                     'product_id' => $productId,
-                    'name' => $itemName, // PENTING: Simpan nama agar tidak "Item Hapus"
+                    'name' => $itemName,
                     'quantity' => $item['qty'],
                     'price_at_sale' => $price,
-                    'subtotal' => $price * $item['qty'], // Hitung subtotal per item
+                    'subtotal' => $price * $item['qty'],
                 ]);
 
-                // Kurangi Stok (Hanya Barang DB)
                 if (!$isCustom && $productId) {
                     $prod = Product::find($productId);
                     if ($prod && $prod->type === 'goods') {
@@ -160,14 +152,12 @@ class PosController extends Controller
         }
     }
 
-    // METHOD RECEIPT (DARI KODE BAPAK, DISESUAIKAN DIKIT)
     public function receipt($invoice_code)
     {
         $transaction = Transaction::where('invoice_code', $invoice_code)
             ->with(['items.product', 'user', 'customer'])
             ->firstOrFail();
 
-        // Cek apakah model Setting ada, kalau belum pakai array kosong dulu biar gak error
         $settings = class_exists(\App\Models\Setting::class)
             ? \App\Models\Setting::pluck('value', 'key')->toArray()
             : [];

@@ -29,10 +29,13 @@ Route::get('/', function () {
 
 Route::middleware('auth')->group(function () {
 
-    // 1. DASHBOARD (Akses untuk semua user yang login)
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
+
+    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
+
+    Route::post('/analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export');
 
     Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
 

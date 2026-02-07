@@ -12,6 +12,5 @@ class Setting extends Model
     protected $guarded = [];
     protected $fillable = ['key', 'value', 'group'];
 
-    // Kita tidak butuh timestamps (created_at/updated_at) untuk setting sederhana
     public $timestamps = false;
 }

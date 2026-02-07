@@ -19,8 +19,6 @@ class UserController extends Controller
 
     public function create()
     {
-        // Ambil semua role KECUALI Owner (Admin tidak boleh bikin Owner baru)
-        // Jika yang login Owner, boleh lihat semua role.
         if (auth()->user()->hasRole('Owner')) {
             $roles = Role::all();
         } else {
@@ -37,10 +35,10 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users',
             'password' => 'required|min:6',
-            'role' => 'required|exists:roles,name' // Validasi Role
+            'role' => 'required|exists:roles,name'
         ]);
 
-        // CEGAH ADMIN MEMBUAT OWNER (Security)
+
         if ($request->role === 'Owner' && !auth()->user()->hasRole('Owner')) {
             abort(403, 'Admin tidak boleh membuat akun Owner.');
         }
@@ -56,7 +54,6 @@ class UserController extends Controller
         return redirect()->route('users.index')->with('success', 'Staf berhasil ditambahkan.');
     }
 
-    // 4. Hapus Staf (Pecat)
     public function destroy(User $user)
     {
         $user->delete();

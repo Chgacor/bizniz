@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SalesReturn; // Model Header (Tabel returns)
-use App\Models\ReturnItem;  // Model Detail (Tabel return_items)
+use App\Models\SalesReturn;
+use App\Models\ReturnItem;
 use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\StockMovement;
@@ -38,7 +38,6 @@ class ReturnController extends Controller
                 ->first();
         }
 
-        // PERBAIKAN: Folder view pakai 'return' (singular)
         return view('return.create', compact('transaction'));
     }
 
@@ -54,23 +53,19 @@ class ReturnController extends Controller
         try {
             $hasReturn = false;
             $itemsToReturn = [];
-            $totalRefund = 0; // Variabel untuk menampung total uang kembali
+            $totalRefund = 0;
 
-            // 1. Validasi & Hitung Total Refund DULU
             foreach ($request->items as $itemId => $data) {
                 if (isset($data['qty_return']) && $data['qty_return'] > 0) {
                     $hasReturn = true;
                     $trxItem = TransactionItem::find($itemId);
 
-                    // Validasi Qty
                     if ($data['qty_return'] > $trxItem->quantity) {
                         throw new \Exception("Qty retur melebihi qty beli untuk item: " . $trxItem->name);
                     }
 
-                    // Hitung nominal refund per item
                     $refundAmount = $trxItem->price_at_sale * $data['qty_return'];
 
-                    // Tambahkan ke total keseluruhan (INI YANG BIKIN ERROR SEBELUMNYA KARENA KOSONG)
                     $totalRefund += $refundAmount;
 
                     $itemsToReturn[] = [
@@ -86,21 +81,18 @@ class ReturnController extends Controller
                 return back()->with('error', 'Pilih minimal 1 barang untuk diretur.');
             }
 
-            // Generate Kode Retur: RET-YYYYMMDD-XXX
             $today = date('Ymd');
             $count = SalesReturn::whereDate('created_at', today())->count() + 1;
             $returnCode = 'RET-' . $today . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
 
-            // 2. Simpan Header (SalesReturn)
             $salesReturn = SalesReturn::create([
                 'return_code' => $returnCode,
                 'transaction_id' => $request->transaction_id,
                 'user_id' => auth()->id(),
                 'reason' => $request->reason,
-                'total_refund' => $totalRefund, // <--- SUDAH DITAMBAHKAN (SOLUSI ERROR 1364)
+                'total_refund' => $totalRefund,
             ]);
 
-            // 3. Simpan Detail Item (ReturnItem) & Update Stok
             foreach ($itemsToReturn as $data) {
                 $trxItem = $data['trx_item'];
 
@@ -131,8 +123,6 @@ class ReturnController extends Controller
 
             DB::commit();
 
-            // PERBAIKAN: Redirect ke route index (pastikan nama route di web.php sesuai)
-            // Jika nama route bapak 'returns.index', biarkan. Jika 'return.index', ubah di sini.
             return redirect()->route('returns.index')->with('success', 'Retur berhasil! Kode: ' . $returnCode);
 
         } catch (\Exception $e) {
