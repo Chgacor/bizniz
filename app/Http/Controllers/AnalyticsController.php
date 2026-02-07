@@ -14,220 +14,168 @@ class AnalyticsController extends Controller
 {
     public function index(Request $request)
     {
+        // SETTING: Timezone WIB
+        $tz = 'Asia/Jakarta';
         $period = $request->period ?? 'daily';
 
-        // 1. SETUP TANGGAL
+        $dateInput = $request->start_date
+            ? Carbon::parse($request->start_date, $tz)
+            : Carbon::now($tz);
+
+        // 1. TENTUKAN JENDELA WAKTU
         if ($period === 'hourly') {
-            // KHUSUS PER JAM: Ambil 1 Hari Full (00:00 - 23:59) dari Start Date
-            $date = $request->start_date ? Carbon::parse($request->start_date) : Carbon::now();
-            $startDate = $date->copy()->startOfDay();
-            $endDate = $date->copy()->endOfDay();
+            $startDate = $dateInput->copy()->startOfDay();
+            $endDate = $dateInput->copy()->endOfDay();
+        } elseif ($period === 'monthly') {
+            $startDate = $dateInput->copy()->startOfYear();
+            $endDate = $dateInput->copy()->endOfYear();
+        } elseif ($period === 'yearly') {
+            $startDate = $dateInput->copy()->startOfYear();
+            $endDate = $dateInput->copy()->addYears(5)->endOfYear();
         } else {
-            // PERIODE LAIN: Normal range
-            $startDate = $request->start_date ? Carbon::parse($request->start_date)->startOfDay() : Carbon::now()->startOfMonth();
-            $endDate = $request->end_date ? Carbon::parse($request->end_date)->endOfDay() : Carbon::now()->endOfMonth();
+            $startDate = $request->start_date ? Carbon::parse($request->start_date, $tz)->startOfDay() : Carbon::now($tz)->startOfMonth();
+            $endDate = $request->end_date ? Carbon::parse($request->end_date, $tz)->endOfDay() : Carbon::now($tz)->endOfMonth();
         }
 
-        // --- A. SUMMARY REPORT ---
-        $revenue = Transaction::whereBetween('created_at', [$startDate, $endDate])
-            ->where('status', 'completed')
-            ->sum('total_amount');
+        // 2. AMBIL DATA
+        $items = TransactionItem::with(['product', 'transaction'])
+            ->whereHas('transaction', function($q) use ($startDate, $endDate) {
+                $q->where(function($query) {
+                    $query->where('status', 'completed')
+                        ->orWhereNull('status')
+                        ->orWhere('status', '');
+                })
+                    ->whereBetween('created_at', [$startDate, $endDate]);
+            })
+            ->get();
 
-        $totalTrx = Transaction::whereBetween('created_at', [$startDate, $endDate])
-            ->where('status', 'completed')
-            ->count();
+        // 3. HITUNG SUMMARY
+        $revenue = 0; $totalCost = 0;
+        $goodsSold = 0; $servicesBooked = 0;
 
-        // Hitung Modal (HPP)
-        $totalCost = TransactionItem::join('products', 'transaction_items.product_id', '=', 'products.id')
-            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
-            ->where('transactions.status', 'completed')
-            ->whereBetween('transaction_items.created_at', [$startDate, $endDate])
-            ->sum(DB::raw('products.buy_price * transaction_items.quantity'));
+        foreach ($items as $item) {
+            $revenue += ($item->quantity * $item->price_at_sale);
+            $totalCost += ($item->quantity * ($item->product->buy_price ?? 0));
 
-        // Volume Barang vs Jasa
-        $goodsSold = TransactionItem::join('products', 'transaction_items.product_id', '=', 'products.id')
-            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
-            ->where('transactions.status', 'completed')
-            ->where('products.type', 'goods')
-            ->whereBetween('transaction_items.created_at', [$startDate, $endDate])
-            ->sum('quantity');
-
-        $servicesBooked = TransactionItem::join('products', 'transaction_items.product_id', '=', 'products.id')
-            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
-            ->where('transactions.status', 'completed')
-            ->where('products.type', 'service')
-            ->whereBetween('transaction_items.created_at', [$startDate, $endDate])
-            ->sum('quantity');
+            if ($item->product && $item->product->type === 'service') {
+                $servicesBooked += $item->quantity;
+            } else {
+                $goodsSold += $item->quantity;
+            }
+        }
 
         $summary = [
             'revenue' => $revenue,
             'cost' => $totalCost,
-            'transactions' => $totalTrx,
+            'net_profit' => $revenue - $totalCost,
+            'transactions' => $items->unique('transaction_id')->count(),
             'goods_sold' => $goodsSold,
             'services_booked' => $servicesBooked,
-            'net_profit' => $revenue - $totalCost,
         ];
 
-        // --- B. STOCK & LOW STOCK ---
-        $stockBalance = Product::where('type', 'goods')
-            ->selectRaw('SUM(stock_quantity) as total_stock_qty, SUM(stock_quantity * buy_price) as total_asset_value')
-            ->first();
+        // 4. GROUPING (Timezone Safe)
+        $grouped = $items->groupBy(function($item) use ($period, $tz) {
+            $dt = $item->created_at->timezone($tz);
+            return match($period) {
+                'hourly' => $dt->format('H:00'),
+                'monthly' => $dt->format('Y-m'),
+                'yearly' => $dt->format('Y'),
+                default => $dt->format('Y-m-d'),
+            };
+        });
 
-        $lowStockItems = Product::where('type', 'goods')
-            ->where('stock_quantity', '<=', 5)
-            ->orderBy('stock_quantity', 'asc')
-            ->limit(10)
-            ->get();
-
-        // --- C. DATA GRAFIK (CHART) ---
-        // Tentukan Format Grouping SQL
-        $dateFormat = match($period) {
-            'hourly' => '%Y-%m-%d %H:00:00', // Group per jam
-            'weekly' => '%Y-%u',
-            'monthly' => '%Y-%m',
-            'yearly' => '%Y',
-            default => '%Y-%m-%d',
-        };
-
-        // Query Data Grafik
-        $chartQuery = TransactionItem::select(
-            DB::raw("DATE_FORMAT(transaction_items.created_at, '$dateFormat') as date_label"),
-            DB::raw('SUM(transaction_items.quantity * transaction_items.price_at_sale) as revenue'),
-            DB::raw('SUM((transaction_items.price_at_sale - products.buy_price) * transaction_items.quantity) as profit')
-        )
-            ->join('products', 'transaction_items.product_id', '=', 'products.id')
-            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
-            ->where('transactions.status', 'completed')
-            ->whereBetween('transaction_items.created_at', [$startDate, $endDate])
-            ->groupBy('date_label')
-            ->get();
-
-        // Siapkan Loop Data (Agar grafik tidak bolong)
-        $labels = [];
-        $dataRevenue = [];
-        $dataProfit = [];
-
-        $current = $startDate->copy(); // Mulai dari 00:00 jika Hourly
+        // 5. DATA GRAFIK
+        $labels = []; $dataRevenue = []; $dataProfit = [];
+        $current = $startDate->copy();
 
         while ($current <= $endDate) {
-            // Key Pencocokan Data
             $key = match($period) {
-                'hourly' => $current->format('Y-m-d H:00:00'),
-                'weekly' => $current->format('Y-W'),
+                'hourly' => $current->format('H:00'),
                 'monthly' => $current->format('Y-m'),
                 'yearly' => $current->format('Y'),
                 default => $current->format('Y-m-d'),
             };
 
-            // Label Tampilan di Grafik
-            $labelDisplay = match($period) {
-                'hourly' => $current->format('H:00'), // Tampil Jam: 00:00, 01:00...
-                'weekly' => 'W'.$current->format('W'),
-                'monthly' => $current->format('M Y'),
+            $labels[] = match($period) {
+                'hourly' => $current->format('H:00'),
+                'monthly' => $current->format('M'),
                 'yearly' => $current->format('Y'),
                 default => $current->format('d M'),
             };
 
-            $labels[] = $labelDisplay;
+            if (isset($grouped[$key])) {
+                $g = $grouped[$key];
+                $r = $g->sum(fn($i) => $i->quantity * $i->price_at_sale);
+                $c = $g->sum(fn($i) => $i->quantity * ($i->product->buy_price ?? 0));
+                $dataRevenue[] = $r;
+                $dataProfit[] = $r - $c;
+            } else {
+                $dataRevenue[] = 0; $dataProfit[] = 0;
+            }
 
-            // Ambil data (atau 0 jika kosong)
-            $row = $chartQuery->where('date_label', $key)->first();
-            $dataRevenue[] = $row ? $row->revenue : 0;
-            $dataProfit[] = $row ? $row->profit : 0;
-
-            // Increment Loop
             match($period) {
                 'hourly' => $current->addHour(),
-                'weekly' => $current->addWeek(),
                 'monthly' => $current->addMonth(),
                 'yearly' => $current->addYear(),
                 default => $current->addDay(),
             };
         }
 
-        $chartData = [
-            'labels' => $labels,
-            'revenue' => $dataRevenue,
-            'profit' => $dataProfit
-        ];
+        $chartData = ['labels' => $labels, 'revenue' => $dataRevenue, 'profit' => $dataProfit];
 
-        // --- D. PRODUCT BREAKDOWN ---
-        $productBreakdown = TransactionItem::select(
-            'products.name',
-            'products.product_code',
-            'products.type',
-            DB::raw('SUM(transaction_items.quantity) as total_qty'),
-            DB::raw('SUM(transaction_items.quantity * transaction_items.price_at_sale) as total_revenue')
-        )
-            ->join('products', 'transaction_items.product_id', '=', 'products.id')
-            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
-            ->where('transactions.status', 'completed')
-            ->whereBetween('transaction_items.created_at', [$startDate, $endDate])
-            ->groupBy('products.id', 'products.name', 'products.product_code', 'products.type')
-            ->orderByDesc('total_revenue')
-            ->limit(10)
-            ->get();
+        // DATA LAIN
+        $stockBalance = Product::where('type', 'goods')->selectRaw('SUM(stock_quantity) as total_stock_qty, SUM(stock_quantity * buy_price) as total_asset_value')->first();
+        $lowStockItems = Product::where('type', 'goods')->where('stock_quantity', '<=', 5)->orderBy('stock_quantity', 'asc')->limit(10)->get();
 
-        return view('analytics.index', compact(
-            'startDate', 'endDate', 'period',
-            'summary', 'stockBalance', 'lowStockItems',
-            'chartData', 'productBreakdown'
-        ));
+        // --- PERBAIKAN DI SINI (Menambahkan product_code) ---
+        $productBreakdown = $items->groupBy('product_id')->map(function($g) {
+            $f = $g->first();
+            return (object)[
+                'name' => $f->product->name ?? $f->name,
+                'type' => $f->product->type ?? 'goods',
+                'product_code' => $f->product->product_code ?? '-', // <--- INI BARIS PENYELAMAT ERROR
+                'total_qty' => $g->sum('quantity'),
+                'total_revenue' => $g->sum(fn($i) => $i->quantity * $i->price_at_sale)
+            ];
+        })->sortByDesc('total_revenue')->take(10);
+
+        return view('analytics.index', compact('startDate', 'endDate', 'period', 'summary', 'stockBalance', 'lowStockItems', 'chartData', 'productBreakdown'));
     }
 
-    public function export(Request $request)
-    {
+    // Fungsi Export CSV
+    public function export(Request $request) {
+        $tz = 'Asia/Jakarta';
         $period = $request->period ?? 'daily';
+        $dateInput = $request->start_date ? Carbon::parse($request->start_date, $tz) : Carbon::now($tz);
 
-        // Logika Tanggal Export sama dengan Index
         if ($period === 'hourly') {
-            $date = $request->start_date ? Carbon::parse($request->start_date) : Carbon::now();
-            $start = $date->copy()->startOfDay();
-            $end = $date->copy()->endOfDay();
+            $start = $dateInput->copy()->startOfDay(); $end = $dateInput->copy()->endOfDay();
+        } elseif ($period === 'monthly') {
+            $start = $dateInput->copy()->startOfYear(); $end = $dateInput->copy()->endOfYear();
+        } elseif ($period === 'yearly') {
+            $start = $dateInput->copy()->startOfYear(); $end = $dateInput->copy()->addYears(5)->endOfYear();
         } else {
-            $start = Carbon::parse($request->start_date)->startOfDay();
-            $end = Carbon::parse($request->end_date)->endOfDay();
+            $start = Carbon::parse($request->start_date, $tz)->startOfDay();
+            $end = Carbon::parse($request->end_date, $tz)->endOfDay();
         }
 
-        $filename = "laporan_bizniz_" . date('Y-m-d_H-i') . ".csv";
-
-        $headers = [
-            "Content-type" => "text/csv",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma" => "no-cache",
-            "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
-            "Expires" => "0"
-        ];
-
+        $filename = "Laporan_Bisnis_" . date('Ymd_Hi') . ".csv";
         $callback = function() use ($start, $end) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['Tanggal', 'Jam', 'Invoice', 'Kasir', 'Pelanggan', 'Total Omset', 'Total Modal', 'Profit']);
-
-            Transaction::with(['user', 'customer', 'items.product'])
-                ->where('status', 'completed')
+            fputcsv($file, ['Tanggal', 'Jam', 'Invoice', 'Omset', 'Modal', 'Profit']);
+            Transaction::with(['items.product'])
+                ->where(function($q) { $q->where('status', 'completed')->orWhereNull('status')->orWhere('status', ''); })
                 ->whereBetween('created_at', [$start, $end])
-                ->chunk(100, function($transactions) use ($file) {
-                    foreach ($transactions as $txn) {
-                        $txnCost = 0;
-                        foreach($txn->items as $item) {
-                            $bp = $item->product ? $item->product->buy_price : 0;
-                            $txnCost += ($bp * $item->quantity);
-                        }
-                        fputcsv($file, [
-                            $txn->created_at->format('Y-m-d'),
-                            $txn->created_at->format('H:i'),
-                            $txn->invoice_code,
-                            $txn->user->name,
-                            $txn->customer ? $txn->customer->name : 'Umum',
-                            $txn->total_amount,
-                            $txnCost,
-                            $txn->total_amount - $txnCost,
-                        ]);
+                ->chunk(100, function($txs) use ($file) {
+                    foreach ($txs as $tx) {
+                        $cst = $tx->items->sum(fn($i) => $i->quantity * ($i->product->buy_price ?? 0));
+                        // Paksa WIB saat export
+                        $d = $tx->created_at->timezone('Asia/Jakarta');
+                        fputcsv($file, [$d->format('Y-m-d'), $d->format('H:i'), $tx->invoice_code, $tx->total_amount, $cst, $tx->total_amount - $cst]);
                     }
                 });
             fclose($file);
         };
-
-        return Response::stream($callback, 200, $headers);
+        return Response::stream($callback, 200, ["Content-type" => "text/csv", "Content-Disposition" => "attachment; filename=$filename"]);
     }
 }

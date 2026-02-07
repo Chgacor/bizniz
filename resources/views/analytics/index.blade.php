@@ -13,29 +13,30 @@
 
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tipe Laporan</label>
-                        <select name="period" id="periodSelect" onchange="this.form.submit()" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black focus:border-black cursor-pointer bg-gray-50">
-                            <option value="hourly" {{ $period == 'hourly' ? 'selected' : '' }}>⏱️ Per Jam (1 Hari Full)</option>
-                            <option value="daily" {{ $period == 'daily' ? 'selected' : '' }}>📅 Harian</option>
+                        <select name="period" onchange="this.form.submit()" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black cursor-pointer bg-gray-50">
+                            <option value="hourly" {{ $period == 'hourly' ? 'selected' : '' }}>⏱️ Per Jam (00-23)</option>
+                            <option value="daily" {{ $period == 'daily' ? 'selected' : '' }}>📅 Harian (Rentang)</option>
                             <option value="weekly" {{ $period == 'weekly' ? 'selected' : '' }}>🗓️ Mingguan</option>
-                            <option value="monthly" {{ $period == 'monthly' ? 'selected' : '' }}>📊 Bulanan</option>
+                            <option value="monthly" {{ $period == 'monthly' ? 'selected' : '' }}>📊 Bulanan (Jan-Des)</option>
+                            <option value="yearly" {{ $period == 'yearly' ? 'selected' : '' }}>📅 Tahunan (5 Thn)</option>
                         </select>
                     </div>
 
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">
-                            {{ $period == 'hourly' ? 'Pilih Tanggal' : 'Dari Tanggal' }}
+                            {{ $period == 'hourly' ? 'Pilih Tanggal' : ($period == 'yearly' ? 'Mulai Tahun' : 'Dari Tanggal') }}
                         </label>
-                        <input type="date" name="start_date" value="{{ $startDate->format('Y-m-d') }}" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black focus:border-black">
+                        <input type="date" name="start_date" value="{{ $startDate->format('Y-m-d') }}" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black">
                     </div>
 
-                    <div class="{{ $period == 'hourly' ? 'opacity-50 pointer-events-none' : '' }}">
+                    <div class="{{ ($period != 'daily') ? 'opacity-40 pointer-events-none' : '' }}">
                         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Sampai Tanggal</label>
-                        <input type="date" name="end_date" value="{{ $endDate->format('Y-m-d') }}" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black focus:border-black" {{ $period == 'hourly' ? 'readonly' : '' }}>
+                        <input type="date" name="end_date" value="{{ $endDate->format('Y-m-d') }}" class="w-full rounded-lg border-gray-300 text-sm focus:ring-black" {{ ($period != 'daily') ? 'readonly' : '' }}>
                     </div>
 
                     <div>
-                        <button type="submit" class="w-full bg-black hover:bg-gray-800 text-white font-bold py-2.5 px-4 rounded-lg shadow transition text-sm flex justify-center items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                        <button type="submit" class="w-full bg-black hover:bg-gray-800 text-white font-bold py-2.5 px-4 rounded-lg shadow transition text-sm flex items-center justify-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                             Tampilkan Data
                         </button>
                     </div>
@@ -57,86 +58,119 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Omset</div>
-                    <div class="mt-2 text-2xl font-black text-brand-900">
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-gray-300 transition">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Pendapatan (Omset)</div>
+                    <div class="mt-2 text-2xl font-black text-gray-900">
                         Rp {{ number_format($summary['revenue'], 0, ',', '.') }}
                     </div>
-                    <div class="text-xs text-green-600 font-bold mt-1">{{ $summary['transactions'] }} Transaksi</div>
-                </div>
-
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Modal (HPP)</div>
-                    <div class="mt-2 text-2xl font-black text-gray-700">
-                        Rp {{ number_format($summary['cost'], 0, ',', '.') }}
+                    <div class="text-xs text-green-600 font-bold mt-1 bg-green-50 inline-block px-1.5 py-0.5 rounded">
+                        {{ $summary['transactions'] }} Transaksi Berhasil
                     </div>
-                    <div class="text-xs text-gray-400 mt-1">Estimasi Modal Barang</div>
                 </div>
 
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Profit Bersih</div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-gray-300 transition">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Profit Bersih (Estimasi)</div>
                     <div class="mt-2 text-2xl font-black text-green-600">
                         Rp {{ number_format($summary['net_profit'], 0, ',', '.') }}
                     </div>
-                    <div class="text-xs text-gray-400 mt-1">Omset - Modal</div>
+                    <div class="text-xs text-gray-400 mt-1">Omset dikurangi Harga Modal</div>
                 </div>
 
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Aset Gudang</div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-gray-300 transition">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Aset Gudang (Stock Balance)</div>
                     <div class="mt-2 text-2xl font-black text-blue-600">
                         Rp {{ number_format($stockBalance->total_asset_value ?? 0, 0, ',', '.') }}
                     </div>
-                    <div class="text-xs text-gray-400 mt-1">{{ number_format($stockBalance->total_stock_qty ?? 0) }} Unit Stok</div>
+                    <div class="text-xs text-gray-400 mt-1">
+                        {{ number_format($stockBalance->total_stock_qty ?? 0) }} Unit barang belum terjual
+                    </div>
                 </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-gray-300 transition">
+                    <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Volume Penjualan</div>
+                    <div class="mt-2 flex flex-col gap-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl font-bold text-orange-600">{{ $summary['goods_sold'] }}</span>
+                            <span class="text-xs text-gray-500">Barang</span>
+                        </div>
+                        <div class="w-full h-px bg-gray-100"></div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg font-bold text-blue-600">{{ $summary['services_booked'] }}</span>
+                            <span class="text-xs text-gray-500">Jasa Service</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
                 <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-bold text-gray-800">
-                            Grafik: Omset vs Profit
-                            <span class="text-xs font-normal text-gray-500 ml-2">({{ $period == 'hourly' ? 'Per Jam' : ucfirst($period) }})</span>
-                        </h3>
-                        <div class="flex gap-4 text-xs">
-                            <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-gray-800"></span> Omset</div>
-                            <div class="flex items-center gap-1"><span class="w-3 h-3 rounded-full bg-green-500"></span> Profit</div>
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="font-bold text-gray-800 text-lg">Grafik: Omset vs Profit</h3>
+
+                        <div class="flex gap-4 text-xs font-medium">
+                            <div class="flex items-center gap-1.5 border border-gray-200 px-2 py-1 rounded bg-gray-50">
+                                <span class="w-3 h-3 rounded-sm border border-gray-900 bg-gray-900"></span>
+                                Omset (Revenue)
+                            </div>
+                            <div class="flex items-center gap-1.5 border border-green-100 px-2 py-1 rounded bg-green-50">
+                                <span class="w-3 h-3 rounded-sm border border-green-500 bg-white"></span>
+                                Profit (Laba)
+                            </div>
                         </div>
                     </div>
+
                     <div class="relative h-80 w-full">
                         <canvas id="profitChart"></canvas>
                     </div>
                 </div>
 
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-red-100">
-                    <div class="flex items-center gap-2 mb-4">
+                    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-red-50">
                         <span class="bg-red-100 text-red-600 p-1.5 rounded-md text-xs">⚠️</span>
                         <h3 class="font-bold text-gray-800">Stok Menipis (< 5)</h3>
                     </div>
-                    <div class="space-y-3 overflow-y-auto max-h-80 custom-scrollbar pr-2">
+
+                    <div class="space-y-3 overflow-y-auto max-h-80 pr-1 custom-scrollbar">
                         @forelse($lowStockItems as $item)
-                            <div class="flex justify-between items-center pb-2 border-b border-gray-50 last:border-0">
+                            <div class="flex justify-between items-start pb-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 p-2 rounded transition">
                                 <div>
-                                    <div class="text-sm font-bold text-gray-700">{{ $item->name }}</div>
-                                    <div class="text-xs text-gray-400">{{ $item->product_code }}</div>
+                                    <div class="text-sm font-bold text-gray-800">{{ $item->name }}</div>
+                                    <div class="text-xs text-gray-400 font-mono mt-0.5">{{ $item->product_code }}</div>
                                 </div>
-                                <span class="bg-red-50 text-red-600 px-2 py-1 rounded text-xs font-bold border border-red-100">Sisa {{ $item->stock_quantity }}</span>
+                                <span class="bg-red-50 text-red-600 px-2 py-1 rounded text-xs font-bold border border-red-100 whitespace-nowrap">
+                                    Sisa {{ $item->stock_quantity }}
+                                </span>
                             </div>
                         @empty
-                            <p class="text-center text-gray-400 py-10 text-sm">Stok aman.</p>
+                            <div class="text-center py-10">
+                                <span class="text-2xl">👌</span>
+                                <p class="text-sm text-gray-400 mt-2">Stok aman terkendali.</p>
+                            </div>
                         @endforelse
                     </div>
+
+                    @if($lowStockItems->isNotEmpty())
+                        <a href="{{ route('warehouse.index') }}" class="block mt-4 text-center text-xs font-bold text-blue-600 hover:underline hover:text-blue-800 bg-blue-50 py-2 rounded-lg transition">
+                            Kelola Stok Gudang →
+                        </a>
+                    @endif
                 </div>
+
             </div>
 
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
-                    <h3 class="font-bold text-gray-800">Produk Terlaris (Top 10)</h3>
+                <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                    <h3 class="font-bold text-gray-800">Rincian Penjualan Produk & Jasa (Top 10)</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-left text-sm">
-                        <thead class="bg-white text-gray-500 font-bold border-b border-gray-100">
+                        <thead class="bg-white text-gray-500 font-bold border-b border-gray-100 uppercase tracking-wider text-xs">
                         <tr>
-                            <th class="px-6 py-3">Produk</th>
+                            <th class="px-6 py-3">Produk / Layanan</th>
+                            <th class="px-6 py-3">Kode</th>
                             <th class="px-6 py-3 text-center">Volume</th>
                             <th class="px-6 py-3 text-right">Total Omset</th>
                         </tr>
@@ -147,12 +181,14 @@
                                 <td class="px-6 py-3 font-bold text-gray-700">
                                     {{ $item->name }}
                                     @if($item->type == 'service')
-                                        <span class="ml-2 bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded">JASA</span>
+                                        <span class="ml-2 bg-blue-100 text-blue-600 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">JASA</span>
                                     @endif
                                 </td>
+                                <td class="px-6 py-3 text-gray-400 font-mono text-xs">{{ $item->product_code }}</td>
                                 <td class="px-6 py-3 text-center">
                                     <span class="px-2 py-1 rounded font-bold text-xs {{ $item->type == 'service' ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700' }}">
                                         {{ $item->total_qty }}
+                                        {{ $item->type == 'service' ? 'x' : 'pc' }}
                                     </span>
                                 </td>
                                 <td class="px-6 py-3 text-right font-mono font-bold text-gray-900">
@@ -160,7 +196,9 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="3" class="text-center py-4 text-gray-400">Tidak ada data.</td></tr>
+                            <tr>
+                                <td colspan="4" class="px-6 py-8 text-center text-gray-400 italic">Belum ada data penjualan pada periode ini.</td>
+                            </tr>
                         @endforelse
                         </tbody>
                     </table>
@@ -184,28 +222,34 @@
                     labels: labels,
                     datasets: [
                         {
-                            label: 'Omset',
+                            label: 'Omset (Revenue)',
                             data: dataRevenue,
-                            // STYLE AREA CHART (HITAM)
-                            borderColor: '#111827',
-                            backgroundColor: 'rgba(17, 24, 39, 0.1)',
+                            // STYLE AREA CHART (HITAM) - MULUS
+                            borderColor: '#111827', // Hitam Pekat
+                            backgroundColor: 'rgba(17, 24, 39, 0.15)', // Hitam Transparan
                             borderWidth: 2,
-                            tension: 0.4,
-                            fill: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 6
+                            tension: 0.4, // Kurva Mulus (Spline)
+                            fill: true,   // Isi Area Bawah
+                            pointRadius: 3, // Titik kecil
+                            pointHoverRadius: 6, // Titik besar saat hover
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#111827',
+                            pointBorderWidth: 2
                         },
                         {
-                            label: 'Profit',
+                            label: 'Profit (Laba)',
                             data: dataProfit,
-                            // STYLE AREA CHART (HIJAU)
-                            borderColor: '#16a34a',
-                            backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                            // STYLE AREA CHART (HIJAU) - MULUS
+                            borderColor: '#16a34a', // Hijau
+                            backgroundColor: 'rgba(22, 163, 74, 0.05)', // Hijau Transparan Tipis
                             borderWidth: 2,
-                            tension: 0.4,
-                            fill: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 6
+                            tension: 0.4, // Kurva Mulus
+                            fill: true,   // Isi Area Bawah
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: '#16a34a',
+                            pointBorderWidth: 2
                         }
                     ]
                 },
@@ -214,13 +258,21 @@
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: false }, // Legend kita buat sendiri di HTML
                         tooltip: {
-                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
                             padding: 12,
+                            titleFont: { size: 13, family: "'Inter', sans-serif" },
+                            bodyFont: { size: 13, family: "'Inter', sans-serif" },
+                            cornerRadius: 8,
                             callbacks: {
                                 label: function(context) {
-                                    return context.dataset.label + ': ' + new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.raw);
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(context.parsed.y);
+                                    }
+                                    return label;
                                 }
                             }
                         }
@@ -230,14 +282,18 @@
                             beginAtZero: true,
                             grid: { borderDash: [4, 4], color: '#f3f4f6' },
                             ticks: {
+                                font: { size: 11 },
+                                color: '#9ca3af',
                                 callback: function(value) {
                                     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', notation: "compact", maximumFractionDigits: 1 }).format(value);
                                 }
-                            }
+                            },
+                            border: { display: false }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { font: { size: 10 } }
+                            ticks: { font: { size: 11 }, color: '#6b7280' },
+                            border: { display: false }
                         }
                     }
                 }
