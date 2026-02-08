@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex flex-col gap-4">
 
-            {{-- HEADER ATAS: Judul & Tombol Aksi --}}
+            {{-- HEADER ATAS --}}
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-200 pb-6">
                 <div>
                     <h2 class="font-bold text-2xl text-gray-900 leading-tight">
@@ -11,7 +11,7 @@
                     <p class="text-sm text-gray-500 mt-1">Pusat kontrol stok, pembelian, dan retur barang.</p>
                 </div>
 
-                {{-- TOMBOL AKSI CEPAT (Dikembalikan!) --}}
+                {{-- TOMBOL AKSI CEPAT --}}
                 <div class="flex flex-wrap gap-3">
                     @hasanyrole('Owner|Admin')
                     <div class="inline-flex rounded-lg shadow-sm" role="group">
@@ -37,7 +37,7 @@
                 </div>
             </div>
 
-            {{-- BARIS KEDUA: Search, Tab Switcher, Tambah Produk --}}
+            {{-- BARIS KEDUA: Search & Actions --}}
             <div class="flex flex-col md:flex-row justify-between items-center gap-4" x-data>
 
                 {{-- SEARCH --}}
@@ -50,11 +50,19 @@
                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition text-sm shadow-sm placeholder-gray-400 font-bold">
                 </form>
 
-                {{-- TOMBOL TAMBAH PRODUK --}}
-                <a href="{{ route('warehouse.create') }}" class="bg-brand-900 hover:bg-black text-white font-bold py-2.5 px-6 rounded-xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-0.5 flex items-center text-sm gap-2 whitespace-nowrap w-full md:w-auto justify-center">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    Tambah Item Baru
-                </a>
+                <div class="flex gap-2 w-full md:w-auto">
+                    {{-- TOMBOL EXPORT EXCEL (BARU) --}}
+                    <a href="{{ route('warehouse.export') }}" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-4 rounded-xl shadow transition text-sm flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Excel
+                    </a>
+
+                    {{-- TOMBOL TAMBAH PRODUK --}}
+                    <a href="{{ route('warehouse.create') }}" class="bg-brand-900 hover:bg-black text-white font-bold py-2.5 px-6 rounded-xl shadow transition text-sm flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        Tambah Item
+                    </a>
+                </div>
             </div>
         </div>
     </x-slot>
@@ -94,7 +102,7 @@
                             <th class="px-6 py-4">Produk Info</th>
                             <th class="px-6 py-4 text-center">Stok Gudang</th>
                             <th class="px-6 py-4 text-right">Modal (HPP)</th>
-                            <th class="px-6 py-4 text-right">Harga Jual</th>
+                            <th class="px-6 py-4 text-right">Harga Jual (HET)</th>
                             <th class="px-6 py-4 text-center">Aksi</th>
                         </tr>
                         </thead>

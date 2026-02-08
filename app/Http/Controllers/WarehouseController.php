@@ -8,6 +8,7 @@ use App\Models\StockMovement;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Response; // Tambahkan ini
 
 class WarehouseController extends Controller
 {
@@ -42,11 +43,8 @@ class WarehouseController extends Controller
     public function create()
     {
         $categories = Category::orderBy('name')->get();
-
-        // Hitung urutan selanjutnya KHUSUS BARANG untuk preview
         $countGoods = Product::where('type', 'goods')->count();
         $nextSequence = str_pad($countGoods + 1, 8, '0', STR_PAD_LEFT);
-
         return view('warehouse.create', compact('categories', 'nextSequence'));
     }
 
@@ -68,7 +66,6 @@ class WarehouseController extends Controller
             $category = Category::firstOrCreate(['name' => $request->category]);
 
             $productCode = null;
-
             if ($request->type === 'goods') {
                 $productCode = $this->generateProductCode($request->name);
             } else {
@@ -106,11 +103,7 @@ class WarehouseController extends Controller
             }
 
             DB::commit();
-
-            $pesan = ($type === 'goods')
-                ? 'Barang berhasil ditambah! Kode: ' . $productCode
-                : 'Jasa service berhasil ditambahkan!';
-
+            $pesan = ($type === 'goods') ? 'Barang berhasil ditambah! Kode: ' . $productCode : 'Jasa service berhasil ditambahkan!';
             return redirect()->route('warehouse.index')->with('success', $pesan);
 
         } catch (\Exception $e) {
@@ -129,7 +122,6 @@ class WarehouseController extends Controller
     public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
-
         $request->validate([
             'name' => 'required|string|max:255',
             'category' => 'required|string',
@@ -168,10 +160,10 @@ class WarehouseController extends Controller
                 }
             }
 
+            // Pastikan kode produk konsisten
             if ($type === 'goods' && (str_contains($product->product_code, 'SRV-') || $product->product_code === null)) {
                 $product->product_code = $this->generateProductCode($request->name);
-            }
-            if ($type === 'service') {
+            } elseif ($type === 'service' && !str_contains($product->product_code, 'SRV-')) {
                 $product->product_code = 'SRV-' . time() . rand(10,99);
             }
 
@@ -205,17 +197,73 @@ class WarehouseController extends Controller
     {
         $words = preg_split("/\s+/", $name);
         $initials = "";
-
         foreach ($words as $word) {
             $cleanChar = preg_replace('/[^a-zA-Z0-9]/', '', substr($word, 0, 1));
             $initials .= strtolower($cleanChar);
         }
-
         if (empty($initials)) $initials = "x";
-
         $countGoods = Product::where('type', 'goods')->count();
         $nextSequence = $countGoods + 1;
-
         return $initials . str_pad($nextSequence, 8, '0', STR_PAD_LEFT);
+    }
+
+    // --- FITUR BARU: EXPORT EXCEL ---
+    public function export()
+    {
+        $filename = "Stok_Gudang_" . date('Y-m-d_Hi') . ".xls";
+        $headers = [
+            "Content-Type" => "application/vnd.ms-excel",
+            "Content-Disposition" => "attachment; filename=\"$filename\"",
+            "Pragma" => "no-cache",
+            "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
+            "Expires" => "0"
+        ];
+
+        $callback = function() {
+            $file = fopen('php://output', 'w');
+
+            // Header HTML untuk Excel
+            fwrite($file, '<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>');
+
+            // --- TABEL: DAFTAR STOK BARANG (FISIK) ---
+            $goods = Product::where('type', 'goods')->orderBy('name')->get();
+
+            fwrite($file, '<h3>DAFTAR STOK BARANG (FISIK)</h3>');
+            fwrite($file, '<table border="1" style="border-collapse: collapse;">');
+
+            // Header Kolom
+            fwrite($file, '<tr style="background-color: #fce5cd;">
+                <th style="width: 150px;">Kode</th>
+                <th style="width: 300px;">Nama Barang</th>
+                <th style="width: 150px;">Kategori</th>
+                <th style="width: 100px;">Stok</th>
+                <th style="width: 150px;">HPP (Modal)</th>
+                <th style="width: 150px;">HET (Jual)</th>
+                <th style="width: 150px;">Total Aset (HPP)</th>
+            </tr>');
+
+            // Isi Data Barang
+            foreach($goods as $item) {
+                $totalAsset = $item->stock_quantity * $item->buy_price;
+
+                fwrite($file, '<tr>');
+                fwrite($file, '<td>' . $item->product_code . '</td>');
+                fwrite($file, '<td>' . $item->name . '</td>');
+                fwrite($file, '<td>' . $item->category . '</td>');
+                fwrite($file, '<td style="text-align: center;">' . $item->stock_quantity . '</td>');
+                fwrite($file, '<td>' . $item->buy_price . '</td>');
+                fwrite($file, '<td>' . $item->sell_price . '</td>');
+                fwrite($file, '<td>' . $totalAsset . '</td>');
+                fwrite($file, '</tr>');
+            }
+            fwrite($file, '</table>');
+
+            // (Bagian Jasa sudah dihapus sesuai permintaan)
+
+            fwrite($file, '</body></html>');
+            fclose($file);
+        };
+
+        return Response::stream($callback, 200, $headers);
     }
 }

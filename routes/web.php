@@ -41,7 +41,8 @@ Route::middleware('auth')->group(function () {
     // Akses: Kasir, Gudang, Pelanggan, Retur
     // =========================================================================
     Route::group(['middleware' => ['role:Staff|Owner|Admin']], function () {
-
+        Route::get('/warehouse/export', [WarehouseController::class, 'export'])->name('warehouse.export'); // <-- TAMBAHKAN INI
+        Route::resource('warehouse', WarehouseController::class);
         // 1. Point of Sale (POS)
         Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
         Route::post('/pos/store', [PosController::class, 'store'])->name('pos.store'); // Simpan Transaksi
