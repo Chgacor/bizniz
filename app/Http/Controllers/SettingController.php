@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -55,46 +56,32 @@ class SettingController extends Controller
     // Fitur Backup Database Manual
     public function downloadBackup()
     {
-        $dbName = env('DB_DATABASE');
-        $tables = DB::select('SHOW TABLES');
-        $return = "-- Backup Database Bizniz.IO\n-- Tanggal: " . date('d-m-Y H:i:s') . "\n\n";
-
-        foreach ($tables as $table) {
-            $tableName = $table->{'Tables_in_' . $dbName};
-
-            // Skip tabel migrasi biar gak error pas import ulang
-            if ($tableName == 'migrations') continue;
-
-            $return .= "\n\n-- Struktur Table: $tableName --\n";
-            $return .= "DROP TABLE IF EXISTS `$tableName`;\n";
-
-            $createTable = DB::select("SHOW CREATE TABLE `$tableName`");
-            $return .= $createTable[0]->{'Create Table'} . ";\n\n";
-
-            $return .= "-- Data Table: $tableName --\n";
-            $rows = DB::table($tableName)->get();
-
-            foreach ($rows as $row) {
-                $return .= "INSERT INTO `$tableName` VALUES(";
-                $values = [];
-                foreach ($row as $val) {
-                    if (is_null($val)) {
-                        $values[] = "NULL";
-                    } elseif (is_numeric($val)) {
-                        $values[] = $val;
-                    } else {
-                        $values[] = "'" . addslashes($val) . "'";
-                    }
-                }
-                $return .= implode(',', $values);
-                $return .= ");\n";
-            }
+        if (!auth()->user()->hasRole('Owner')) {
+            abort(403);
         }
 
-        $fileName = 'backup_bizniz_' . date('Y_m_d_His') . '.sql';
+        try {
+            // 2. GENERATE: Run the backup command programmatically
+            // We use the --only-db flag so we don't backup the whole file system (images), just data.
+            Artisan::call('backup:run', ['--only-db' => true, '--disable-notifications' => true]);
 
-        return response()->streamDownload(function () use ($return) {
-            echo $return;
-        }, $fileName);
+            // 3. RETRIEVE: Find the newest backup file
+            // Spatie stores backups in 'storage/app/Laravel' (default) or 'storage/app/backups'
+            // You verify this path in config/backup.php -> 'name'
+            $appName = config('backup.backup.name');
+            $files = Storage::disk('local')->files($appName);
+
+            // Sort files to get the latest one
+            $latestFile = collect($files)->last();
+
+            if (!$latestFile) {
+                return back()->with('error', 'Backup failed to generate.');
+            }
+
+            // 4. DOWNLOAD: Send the zip file to the browser
+            return Storage::disk('local')->download($latestFile);
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error: ' . $e->getMessage());
+        }
     }
 }
