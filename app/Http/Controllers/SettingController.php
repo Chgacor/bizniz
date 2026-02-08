@@ -63,7 +63,7 @@ class SettingController extends Controller
             $tableName = $table->{'Tables_in_' . $dbName};
 
             // Skip tabel migrasi biar gak error pas import ulang
-            if($tableName == 'migrations') continue;
+            if ($tableName == 'migrations') continue;
 
             $return .= "\n\n-- Struktur Table: $tableName --\n";
             $return .= "DROP TABLE IF EXISTS `$tableName`;\n";

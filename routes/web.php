@@ -46,21 +46,29 @@ Route::middleware('auth')->group(function () {
         Route::get('/pos', [PosController::class, 'index'])->name('pos.index');
         Route::post('/pos/store', [PosController::class, 'store'])->name('pos.store'); // Simpan Transaksi
         Route::get('/pos/search', [PosController::class, 'search'])->name('pos.search');
-        Route::get('/transaction/{invoice_code}/receipt', [PosController::class, 'receipt'])->name('pos.receipt');
-        Route::get('/pos/print/{invoice_code}', [PosController::class, 'receipt'])->name('pos.print'); // Alias print
+        Route::get('/transaction/{invoice_code}/receipt', [PosController::class, 'receipt'])
+            ->name('pos.receipt')
+            ->middleware('throttle:30,1');
+        Route::get('/pos/print/{invoice_code}', [PosController::class, 'receipt'])
+            ->name('pos.print')
+            ->middleware('throttle:30,1');
 
         // 2. Warehouse / Gudang
         Route::resource('warehouse', WarehouseController::class);
 
         // 3. Customers / Pelanggan
-        Route::get('/customers/search', [CustomerController::class, 'search'])->name('customers.search');
+        Route::get('/customers/search', [CustomerController::class, 'search'])
+            ->name('customers.search')
+            ->middleware('throttle:60,1');
         Route::post('/customers/quick-store', [CustomerController::class, 'storeFromPos'])->name('customers.quick_store');
         Route::resource('customers', CustomerController::class);
 
         // 4. Retur Barang
         Route::get('/returns/history', [ReturnController::class, 'index'])->name('returns.index');
         Route::get('/returns/create', [ReturnController::class, 'create'])->name('returns.create');
-        Route::get('/returns/search', [ReturnController::class, 'searchTransaction'])->name('returns.search');
+        Route::get('/returns/search', [ReturnController::class, 'searchTransaction'])
+            ->name('returns.search')
+            ->middleware('throttle:60,1');
         Route::post('/returns/store', [ReturnController::class, 'store'])->name('returns.store');
     });
 
@@ -72,13 +80,17 @@ Route::middleware('auth')->group(function () {
 
         // Analitik Bisnis
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
-        Route::post('/analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export');
+        Route::post('/analytics/export', [AnalyticsController::class, 'export'])
+            ->name('analytics.export')
+            ->middleware('throttle:10,1');
 
         // Pusat Riwayat & Log (Pencarian Global)
         Route::get('/history', [HistoryController::class, 'index'])->name('history.index');
 
         // Export Laporan Umum
-        Route::post('/reports/export', [ReportController::class, 'export'])->name('reports.export');
+        Route::post('/reports/export', [ReportController::class, 'export'])
+            ->name('reports.export')
+            ->middleware('throttle:10,1');
     });
 
     // =========================================================================
@@ -93,13 +105,17 @@ Route::middleware('auth')->group(function () {
         // 2. Pengaturan Sistem
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
-        Route::get('/settings/backup', [SettingController::class, 'downloadBackup'])->name('settings.backup');
+        Route::get('/settings/backup', [SettingController::class, 'downloadBackup'])
+            ->name('settings.backup')
+            ->middleware('throttle:1,1');
 
         // 3. Pembelian Stok (Restock/Kulakan)
         Route::get('/purchase/history', [PurchaseController::class, 'index'])->name('purchase.index');
         Route::get('/purchase/create', [PurchaseController::class, 'create'])->name('purchase.create');
         Route::post('/purchase/store', [PurchaseController::class, 'store'])->name('purchase.store');
-        Route::get('/purchase/search-products', [PurchaseController::class, 'searchProducts'])->name('purchase.search');
+        Route::get('/purchase/search-products', [PurchaseController::class, 'searchProducts'])
+            ->name('purchase.search')
+            ->middleware('throttle:60,1');
 
         // 4. Promo & Diskon
         Route::resource('promotions', PromotionController::class);
@@ -111,7 +127,6 @@ Route::middleware('auth')->group(function () {
         auth()->user()->notifications->where('id', $id)->markAsRead();
         return back();
     })->name('notifications.read');
-
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

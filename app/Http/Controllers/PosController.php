@@ -27,10 +27,10 @@ class PosController extends Controller
 
         // Ambil promo aktif hari ini
         $promotions = Promotion::where('is_active', true)
-            ->where(function($q) {
+            ->where(function ($q) {
                 $q->whereNull('start_date')->orWhere('start_date', '<=', now());
             })
-            ->where(function($q) {
+            ->where(function ($q) {
                 $q->whereNull('end_date')->orWhere('end_date', '>=', now());
             })
             ->get();
@@ -89,7 +89,7 @@ class PosController extends Controller
 
             // 2. SIMPAN TRANSAKSI (STATUS WAJIB 'COMPLETED')
             $transaction = Transaction::create([
-                'invoice_code' => 'INV-' . $timestamp->format('Ymd') . '-' . Str::upper(Str::random(4)),
+                'invoice_code' => 'INV-' . $timestamp->format('Ymd') . '-' . Str::upper(Str::random(10)),
                 'user_id' => auth()->id(),
                 'customer_id' => $request->customer_id,
                 'promotion_id' => $promotionId,
@@ -145,7 +145,6 @@ class PosController extends Controller
                 'invoice_code' => $transaction->invoice_code,
                 'change' => $transaction->change_amount
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 400);
