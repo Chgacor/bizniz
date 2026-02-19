@@ -13,6 +13,9 @@ use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\ReturnController;
 use App\Http\Controllers\PromotionController;
 use App\Http\Controllers\HistoryController;
+use App\Models\Transaction;
+use App\Models\Product;
+use Carbon\Carbon;
 
 /*
 |--------------------------------------------------------------------------
@@ -27,8 +30,26 @@ Route::get('/', function () {
 Route::middleware('auth')->group(function () {
 
     // Dashboard Utama
+    // Dashboard Utama
     Route::get('/dashboard', function () {
-        return view('dashboard');
+        // 1. Hitung Omset Hari Ini
+        $todayRevenue = Transaction::whereDate('created_at', Carbon::today())->sum('total_amount');
+
+        // 2. Hitung Jumlah Transaksi Hari Ini
+        $todayTransactions = Transaction::whereDate('created_at', Carbon::today())->count();
+
+        // 3. Hitung Barang yang Stoknya Menipis (<= 5)
+        $lowStockCount = Product::where('type', 'goods')->where('stock_quantity', '<=', 5)->count();
+
+        // 4. Ambil 5 Transaksi Terakhir
+        $recentTransactions = Transaction::with('user')->latest()->take(5)->get();
+
+        return view('dashboard', compact(
+            'todayRevenue',
+            'todayTransactions',
+            'lowStockCount',
+            'recentTransactions'
+        ));
     })->name('dashboard');
 
     // Manajemen Profil
