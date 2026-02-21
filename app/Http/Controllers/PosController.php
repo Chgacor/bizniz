@@ -154,15 +154,11 @@ class PosController extends Controller
 
     public function receipt($invoice_code)
     {
-        $transaction = Transaction::where('invoice_code', $invoice_code)
-            ->with(['items.product', 'user', 'customer'])
+        // Cari transaksi beserta item-nya
+        $transaction = \App\Models\Transaction::with(['items.product', 'user'])
+            ->where('invoice_code', $invoice_code)
             ->firstOrFail();
 
-        // Ambil setting jika ada, kosongkan array jika belum ada tabel setting
-        $settings = class_exists(\App\Models\Setting::class)
-            ? \App\Models\Setting::pluck('value', 'key')->toArray()
-            : [];
-
-        return view('pos.receipt', compact('transaction', 'settings'));
+        return view('pos.receipt', compact('transaction'));
     }
 }
