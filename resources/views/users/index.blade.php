@@ -104,7 +104,7 @@
                         text: "Mereka tidak akan bisa login lagi ke sistem.",
                         icon: 'warning',
                         showCancelButton: true,
-                        confirmButtonColor: '#000000', // Hitam Brand
+                        confirmButtonColor: '#000000',
                         cancelButtonColor: '#d33',
                         confirmButtonText: 'Ya, Hapus Akses!',
                         cancelButtonText: 'Batal',

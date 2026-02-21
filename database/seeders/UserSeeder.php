@@ -18,30 +18,12 @@ class UserSeeder extends Seeder
         }
 
         $owner = User::firstOrCreate(
-            ['email' => 'owner@bengkel.io'],
+            ['email' => 'owner@jsmodify.cloud'],
             [
-                'name' => 'Juragan Bengkel',
-                'password' => Hash::make('password'),
+                'name' => 'Boss',
+                'password' => Hash::make('ownerjsmodify2026'),
             ]
         );
         $owner->assignRole('Owner');
-
-        $staff = User::firstOrCreate(
-            ['email' => 'mekanik@bengkel.io'],
-            [
-                'name' => 'Mekanik Handal',
-                'password' => Hash::make('password'),
-            ]
-        );
-        $staff->assignRole('Staff');
-
-        $viewer = User::firstOrCreate(
-            ['email' => 'finance@bengkel.io'],
-            [
-                'name' => 'Admin Keuangan',
-                'password' => Hash::make('password'),
-            ]
-        );
-        $viewer->assignRole('Viewer');
     }
 }

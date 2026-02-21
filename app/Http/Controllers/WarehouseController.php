@@ -57,7 +57,7 @@ class WarehouseController extends Controller
             'buy_price' => 'nullable|numeric|min:0',
             'sell_price' => 'required|numeric|min:0',
             'stock_quantity' => 'nullable|integer|min:0',
-            'image' => 'nullable|image|max:2048',
+            'image' => 'nullable|image|max:10240',
             'product_code' => 'nullable|unique:products,product_code',
         ]);
 
