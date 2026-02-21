@@ -90,7 +90,6 @@
     <p>Simpan struk ini sebagai bukti garansi.</p>
 </div>
 
-{{-- Spasi agar kertas keluar cukup panjang untuk disobek --}}
 <br><br><br>
 
 </body>

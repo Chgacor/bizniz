@@ -250,7 +250,6 @@
                                 title: 'Berhasil!', html: `<h2 class="text-4xl font-black text-green-600">${this.formatRupiah(data.change)}</h2><p>Kembalian</p>`, icon: 'success', showCancelButton: true, confirmButtonText: '🖨️ CETAK RAWBT', cancelButtonText: 'Selesai', confirmButtonColor: '#F97316'
                             }).then((r) => {
                                 if (r.isConfirmed) {
-                                    // PEMANGGILAN RAWBT
                                     window.location.href = `rawbt:{{ url('/') }}/pos/print/${data.invoice_code}`;
                                     setTimeout(() => window.location.reload(), 2000);
                                 } else window.location.reload();
