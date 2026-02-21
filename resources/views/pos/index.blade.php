@@ -237,6 +237,7 @@
                     this.grandTotal = Math.max(0, this.subtotal - this.discount);
                 },
                 formatRupiah(n) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n); },
+
                 async submitTransaction() {
                     this.isLoading = true;
                     try {
@@ -247,10 +248,17 @@
                         let data = await res.json();
                         if (data.status === 'success') {
                             Swal.fire({
-                                title: 'Berhasil!', html: `<h2 class="text-4xl font-black text-green-600">${this.formatRupiah(data.change)}</h2><p>Kembalian</p>`, icon: 'success', showCancelButton: true, confirmButtonText: '🖨️ CETAK RAWBT', cancelButtonText: 'Selesai', confirmButtonColor: '#F97316'
+                                title: 'Berhasil!',
+                                html: `<h2 class="text-4xl font-black text-green-600">${this.formatRupiah(data.change)}</h2><p>Kembalian</p>`,
+                                icon: 'success',
+                                showCancelButton: true,
+                                confirmButtonText: '🖨️ CETAK STRUK',
+                                cancelButtonText: 'Selesai',
+                                confirmButtonColor: '#F97316'
                             }).then((r) => {
                                 if (r.isConfirmed) {
-                                    window.location.href = `rawbt:{{ url('/') }}/pos/print/${data.invoice_code}`;
+                                    // BUKA POP-UP BARU UNTUK NGE-PRINT LEWAT CHROME -> RAWBT PRINT SERVICE
+                                    window.open(`/pos/print/${data.invoice_code}`, '_blank');
                                     setTimeout(() => window.location.reload(), 2000);
                                 } else window.location.reload();
                             });
