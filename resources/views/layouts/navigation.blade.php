@@ -8,7 +8,7 @@
                             B
                         </div>
                         <span class="font-bold text-xl tracking-tight text-brand-900 group-hover:text-black transition">
-                            Bizniz.IO
+                            Bizniz.io
                         </span>
                     </a>
                 </div>
