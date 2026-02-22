@@ -257,10 +257,14 @@
                                 confirmButtonColor: '#F97316'
                             }).then((r) => {
                                 if (r.isConfirmed) {
-                                    // BUKA POP-UP BARU UNTUK NGE-PRINT LEWAT CHROME -> RAWBT PRINT SERVICE
+                                    // Membuka tab baru yang berisi desain dari receipt.blade.php
                                     window.open(`/pos/print/${data.invoice_code}`, '_blank');
+
+                                    // Refresh halaman POS setelah 2 detik
                                     setTimeout(() => window.location.reload(), 2000);
-                                } else window.location.reload();
+                                } else {
+                                    window.location.reload();
+                                }
                             });
                         } else throw new Error(data.message);
                     } catch (e) { Swal.fire('Gagal', e.message, 'error'); } finally { this.isLoading = false; }
