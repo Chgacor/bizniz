@@ -66,7 +66,7 @@
                             </div>
                             <div class="p-2 flex-1 flex flex-col justify-between">
                                 <h4 class="font-bold text-gray-800 text-xs leading-tight line-clamp-2" x-text="product.name"></h4>
-                                <div class="text-brand-700 font-bold text-sm text-right" x-text="formatRupiah(product.sell_price)"></div>
+                                <div class="text-brand-700 font-bold text-sm text-right" x-text="formatCurrency(product.sell_price)"></div>
                             </div>
                         </div>
                     </template>
@@ -95,8 +95,8 @@
                             <div class="flex justify-between items-start">
                                 <h4 class="font-bold text-gray-800 text-base" x-text="item.name"></h4>
                                 <div class="text-right">
-                                    <div class="font-black text-brand-800 text-lg" x-text="formatRupiah(item.price * item.qty)"></div>
-                                    <div class="text-xs text-gray-400" x-text="'@ ' + formatRupiah(item.price)"></div>
+                                    <div class="font-black text-brand-800 text-lg" x-text="formatCurrency(item.price * item.qty)"></div>
+                                    <div class="text-xs text-gray-400" x-text="'@ ' + formatCurrency(item.price)"></div>
                                 </div>
                             </div>
                         </div>
@@ -135,14 +135,17 @@
                 </div>
 
                 <div class="flex justify-between items-center border-t border-dashed pt-4 mb-4">
-                    <span class="text-xs text-gray-500 font-bold uppercase">Total Tagihan</span>
-                    <span class="font-black text-4xl text-brand-900" x-text="formatRupiah(grandTotal)"></span>
+                    <div>
+                        <span class="text-xs text-gray-500 font-bold uppercase block">Total Tagihan</span>
+                        <span x-show="taxAmount > 0" class="text-[10px] text-red-500 font-bold">+ PPN <span x-text="taxRate"></span>%: <span x-text="formatCurrency(taxAmount)"></span></span>
+                    </div>
+                    <span class="font-black text-4xl text-brand-900" x-text="formatCurrency(grandTotal)"></span>
                 </div>
 
                 <div class="flex gap-4">
                     <div class="w-1/2 relative">
                         <label class="absolute -top-2.5 left-3 bg-white px-1 text-[10px] font-bold text-gray-500">PEMBAYARAN</label>
-                        <input type="number" x-model.number="paidAmount" class="w-full pl-4 pr-4 py-4 rounded-xl border-2 border-gray-300 text-2xl font-black bg-gray-50" placeholder="Rp">
+                        <input type="number" x-model.number="paidAmount" class="w-full pl-4 pr-4 py-4 rounded-xl border-2 border-gray-300 text-2xl font-black bg-gray-50" placeholder="0">
                     </div>
                     <button @click="submitTransaction()" :disabled="cart.length === 0 || paidAmount < grandTotal || isLoading"
                             class="flex-1 rounded-xl font-black text-xl text-white shadow-xl transition-all"
@@ -153,7 +156,7 @@
                 </div>
 
                 <div class="text-right mt-2 h-6">
-                    <span class="text-sm font-bold text-green-600" x-show="paidAmount >= grandTotal && grandTotal > 0">KEMBALI: <span x-text="formatRupiah(paidAmount - grandTotal)"></span></span>
+                    <span class="text-sm font-bold text-green-600" x-show="paidAmount >= grandTotal && grandTotal > 0">KEMBALI: <span x-text="formatCurrency(paidAmount - grandTotal)"></span></span>
                 </div>
             </div>
         </div>
@@ -180,12 +183,22 @@
 
     <script>
         document.addEventListener('alpine:init', () => {
+            // Tarik data setting dari Laravel (Jika null, fallback ke nilai default)
+            const appSettings = @json($settings ?? ['currency_symbol' => 'Rp', 'tax_rate' => 0]);
+
             Alpine.data('posSystem', (products, promotions, customers) => ({
                 products, promotions, customers,
                 search: '', filterType: 'goods', cart: [],
                 showCustomerModal: false, customerSearch: '', selectedCustomer: null, customerId: '',
                 manualDiscountMode: false, manualType: 'fixed', manualValue: '', selectedPromoId: '',
-                paymentMethod: 'cash', paidAmount: '', subtotal: 0, discount: 0, grandTotal: 0, isLoading: false,
+                paymentMethod: 'cash', paidAmount: '',
+                subtotal: 0, discount: 0, grandTotal: 0,
+
+                // Variabel Pajak dari Settings
+                taxRate: parseFloat(appSettings.tax_rate) || 0,
+                taxAmount: 0,
+
+                isLoading: false,
 
                 get filteredProducts() {
                     let items = this.products.filter(p => p.type === this.filterType);
@@ -226,17 +239,37 @@
                 },
                 removeFromCart(idx) { this.cart.splice(idx, 1); this.calculateTotal(); },
                 resetCart() { if(confirm('Kosongkan keranjang?')) { this.cart = []; this.calculateTotal(); } },
+
+                // LOGIKA HITUNG PAJAK & TOTAL
                 calculateTotal() {
+                    // 1. Hitung Subtotal
                     this.subtotal = this.cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+
+                    // 2. Hitung Diskon
                     this.discount = 0;
-                    if (this.manualDiscountMode) this.discount = parseFloat(this.manualValue) || 0;
-                    else if (this.selectedPromoId) {
+                    if (this.manualDiscountMode) {
+                        this.discount = parseFloat(this.manualValue) || 0;
+                    } else if (this.selectedPromoId) {
                         let p = this.promotions.find(x => x.id == this.selectedPromoId);
                         if (p) this.discount = p.discount_type === 'fixed' ? parseFloat(p.value) : this.subtotal * (parseFloat(p.value) / 100);
                     }
-                    this.grandTotal = Math.max(0, this.subtotal - this.discount);
+
+                    // 3. Dasar Pengenaan Pajak
+                    let afterDiscount = Math.max(0, this.subtotal - this.discount);
+
+                    // 4. Hitung PPN
+                    this.taxAmount = afterDiscount * (this.taxRate / 100);
+
+                    // 5. Grand Total Akhir
+                    this.grandTotal = Math.max(0, afterDiscount + this.taxAmount);
                 },
-                formatRupiah(n) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n); },
+
+                // FORMAT MATA UANG DINAMIS (Bisa Rp atau $)
+                formatCurrency(n) {
+                    let symbol = appSettings.currency_symbol || 'Rp';
+                    let formattedNumber = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(n);
+                    return `${symbol} ${formattedNumber}`;
+                },
 
                 async submitTransaction() {
                     this.isLoading = true;
@@ -249,7 +282,7 @@
                         if (data.status === 'success') {
                             Swal.fire({
                                 title: 'Berhasil!',
-                                html: `<h2 class="text-4xl font-black text-green-600">${this.formatRupiah(data.change)}</h2><p>Kembalian</p>`,
+                                html: `<h2 class="text-4xl font-black text-green-600">${this.formatCurrency(data.change)}</h2><p>Kembalian</p>`,
                                 icon: 'success',
                                 showCancelButton: true,
                                 confirmButtonText: '🖨️ CETAK STRUK',
@@ -257,10 +290,14 @@
                                 confirmButtonColor: '#F97316'
                             }).then((r) => {
                                 if (r.isConfirmed) {
-                                    // BUKA POP-UP BARU UNTUK NGE-PRINT LEWAT CHROME -> RAWBT PRINT SERVICE
+                                    // BUKA POPUP CHROME UNTUK STRUK RECEIPT.BLADE.PHP
                                     window.open(`/pos/print/${data.invoice_code}`, '_blank');
+
+                                    // Refresh halaman setelah 2 detik
                                     setTimeout(() => window.location.reload(), 2000);
-                                } else window.location.reload();
+                                } else {
+                                    window.location.reload();
+                                }
                             });
                         } else throw new Error(data.message);
                     } catch (e) { Swal.fire('Gagal', e.message, 'error'); } finally { this.isLoading = false; }

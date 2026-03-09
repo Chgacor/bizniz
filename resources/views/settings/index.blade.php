@@ -74,7 +74,7 @@
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700">Simbol Mata Uang</label>
-                                        <input type="text" name="currency_symbol" value="{{ $settings['currency_symbol'] ?? 'Rp' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                                        <input type="text" name="currency_symbol" value="{{ $settings['currency_symbol'] ?? 'Rp' }}" placeholder="Contoh: Rp atau $" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700">Pajak PPN (%)</label>
@@ -96,9 +96,22 @@
                                     <label class="block text-sm font-medium text-gray-700">Footer Struk (Bawah)</label>
                                     <textarea name="receipt_footer" rows="2" placeholder="Contoh: Barang yang dibeli tidak dapat dikembalikan" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">{{ $settings['receipt_footer'] ?? '' }}</textarea>
                                 </div>
+
                                 <div class="flex items-center mt-2">
-                                    <input type="checkbox" name="show_logo_on_receipt" value="1" class="rounded border-gray-300 text-brand-600 shadow-sm focus:border-brand-300 focus:ring focus:ring-brand-200 focus:ring-opacity-50">
-                                    <span class="ml-2 text-sm text-gray-600">Tampilkan Logo di Struk</span>
+                                    <input type="checkbox" name="show_logo_on_receipt" value="1" {{ (isset($settings['show_logo_on_receipt']) && $settings['show_logo_on_receipt'] == '1') ? 'checked' : '' }} class="rounded border-gray-300 text-brand-600 shadow-sm focus:border-brand-300 focus:ring focus:ring-brand-200 focus:ring-opacity-50">
+                                    <span class="ml-2 text-sm text-gray-600 font-bold">Tampilkan Logo di Struk</span>
+                                </div>
+
+                                <div class="border-t pt-4">
+                                    <label class="block text-sm font-medium text-gray-700">Upload Logo Toko (Opsional)</label>
+                                    <input type="file" name="shop_logo" accept="image/*" class="mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200">
+
+                                    @if(isset($settings['shop_logo']) && $settings['shop_logo'])
+                                        <div class="mt-3">
+                                            <p class="text-xs text-gray-500 mb-1">Logo Saat Ini:</p>
+                                            <img src="{{ asset('storage/' . $settings['shop_logo']) }}" class="h-16 rounded border border-gray-200 object-contain">
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
                         </div>
